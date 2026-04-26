@@ -13,6 +13,16 @@ services:
       - --collation-server=utf8mb4_unicode_ci
     volumes:
       - mysql-data:/var/lib/mysql
+  redis:
+    image: redis:7.4
+    container_name: aandi-redis
+    ports:
+      - "6379:6379"
+    command:
+      - redis-server
+      - --save
+      - "60"
+      - "1"
 
 volumes:
   mysql-data:

@@ -3,6 +3,7 @@ package com.andi.rest_crud.controller
 import com.andi.rest_crud.dto.PostCreateRequest
 import com.andi.rest_crud.dto.PostResponse
 import com.andi.rest_crud.dto.PostUpdateRequest
+import com.andi.rest_crud.service.PostQueryService
 import com.andi.rest_crud.service.PostService
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -19,7 +20,8 @@ import org.springframework.web.bind.annotation.RestController
 @RestController
 @RequestMapping("/posts")
 class PostController(
-    private val postService: PostService
+    private val postService: PostService,
+    private val postQueryService: PostQueryService
 ) {
 
     @GetMapping
@@ -29,7 +31,7 @@ class PostController(
 
     @GetMapping("/{id}")
     fun getById(@PathVariable id: Long): PostResponse {
-        return postService.getById(id)
+        return postQueryService.getPost(id)
     }
 
     @PostMapping

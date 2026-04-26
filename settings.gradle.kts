@@ -1,1 +1,1 @@
-rootProject.name = "spring-boot-db-access-lab"
+rootProject.name = "spring-boot-redis-cache-lab"

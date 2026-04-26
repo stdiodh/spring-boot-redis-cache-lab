@@ -1,6 +1,6 @@
 spring:
   application:
-    name: spring-boot-db-access-lab
+    name: spring-boot-redis-cache-lab
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
@@ -38,6 +38,10 @@ spring:
             scope:
               - profile
               - email
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 springdoc:
   swagger-ui:
@@ -52,3 +56,6 @@ jwt:
 app:
   frontend-url: "http://localhost:8080/auth-demo.html"
   password-reset-url: "http://localhost:8080/auth-demo.html"
+
+cache:
+  post-ttl-seconds: 60
