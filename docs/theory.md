@@ -1,206 +1,213 @@
-# 테스트와 검증 이론 정리
+# 캐시와 Redis 이론 정리
 
-> 이미 만든 기능을 다시 믿을 수 있게 만드는 가장 작은 테스트 흐름을 익히는 문서입니다.
+> 자주 조회되는 데이터를 DB보다 더 빠르게 다시 가져오기 위해 캐시를 앞에 두는 흐름을 익히는 문서입니다.
 
 > 이번 주차 한 줄 요약  
-> `PostService`와 `AuthService`를 대상으로 정상 케이스와 실패 케이스를 나눠 테스트하면서, 테스트가 왜 필요한지 실감하는 단계입니다.
+> 게시글 조회 앞에 Redis 캐시를 붙여서 cache hit와 miss, TTL의 의미를 직접 확인하는 단계입니다.
 
 ## 먼저 이것만 기억해도 됩니다
 
-- 테스트는 기능이 맞는지 확인하는 도구입니다.
-- 테스트는 변경 후 회귀를 막는 안전장치이기도 합니다.
-- 이번 시퀀스는 Service 단위 테스트에만 집중합니다.
+- DB와 캐시는 역할이 다릅니다.
+- cache miss는 실패가 아니라 정상 흐름입니다.
+- TTL이 있어야 캐시를 영구 저장소처럼 오해하지 않게 됩니다.
 
 ## 이 주제를 왜 배우는가
 
-05 시퀀스까지 오면 기능은 꽤 많이 붙어 있습니다.
-그런데 기능이 늘어날수록 "이걸 고친 뒤에도 기존 동작이 그대로일까?"라는 걱정이 함께 커집니다.
+기능이 늘어나면 저장만 중요한 것이 아니라 조회 속도도 신경 쓰이기 시작합니다.
+특히 같은 데이터를 자주 읽는 상황에서는 매번 DB만 보는 구조가 점점 부담이 될 수 있습니다.
 
-그래서 이번 실습에서는 새로운 기능을 더 붙이기보다,
-이미 만든 Service 흐름을 테스트로 다시 확인해봅니다.
-이 감각이 잡혀야 다음에 캐시나 확장 기능이 들어와도
-"변경 전후를 어떻게 확인할지"를 자연스럽게 생각할 수 있습니다.
+그래서 이번 실습에서는 Redis를 이용해
+"먼저 캐시를 보고, 없으면 DB를 보고, 다시 캐시에 저장하는" 가장 단순한 흐름을 붙여봅니다.
+이 감각을 잡아야 나중에 실시간 통신이나 더 큰 트래픽 주제에서도
+"어디서 병목이 생길 수 있는가"를 자연스럽게 떠올릴 수 있습니다.
 
 ## 이번 실습 흐름을 먼저 한눈에 보기
 
-1. 테스트가 Service를 직접 호출합니다.
-2. fixture와 mock으로 필요한 입력과 의존성을 준비합니다.
-3. 정상 케이스에서는 기대한 값이 나오는지 확인합니다.
-4. 실패 케이스에서는 예외가 발생하는지 확인합니다.
-5. 결과를 보고 다시 실행하면서 기존 기능을 신뢰할 수 있는지 확인합니다.
+1. 클라이언트가 `GET /posts/{id}` 요청을 보냅니다.
+2. `PostQueryService`가 먼저 Redis 캐시를 조회합니다.
+3. 캐시에 있으면 바로 응답합니다.
+4. 캐시에 없으면 `PostService`로 DB를 조회합니다.
+5. 조회 결과를 Redis에 저장합니다.
+6. 다음 같은 요청에서는 cache hit가 일어납니다.
 
 짧게 말하면 이번 실습은  
-**given 준비 -> Service 호출 -> 결과 검증 -> 다시 실행** 흐름을 익히는 과정입니다.
+**요청 -> 캐시 조회 -> miss면 DB 조회 -> 캐시 저장 -> 응답** 흐름을 익히는 과정입니다.
 
 > 한 줄로 다시 보기  
-> 기능을 만드는 단계에서 한 걸음 물러나, 지금까지 만든 코드를 다시 믿을 수 있게 만드는 실습입니다.
+> DB 앞에 빠른 보조 저장소를 하나 두고 조회 흐름을 가볍게 만드는 입문 실습입니다.
 
 ## 오늘 꼭 잡아야 할 질문
 
-- 테스트는 왜 지금 시점에 필요한가요?
-- 정상 케이스와 예외 케이스는 무엇이 다른가요?
-- fixture와 mock은 각각 어떤 역할을 하나요?
-- 이번 코드에서 가장 중요한 테스트 클래스는 무엇인가요?
-- 다음 시퀀스로 가기 전에 무엇을 신뢰할 수 있어야 하나요?
+- 왜 자주 조회되는 데이터에 캐시를 붙이나요?
+- cache hit와 miss는 무엇이 다른가요?
+- TTL은 왜 필요한가요?
+- 이번 코드에서 캐시 흐름이 가장 잘 보이는 클래스는 무엇인가요?
+- 다음 주제로 넘어가기 전에 어떤 차이를 설명할 수 있어야 하나요?
 
 ## 중요한 코드 먼저 보기
 
-### 1. 정상 흐름을 검증하는 테스트
+### 1. 캐시를 먼저 보는 코드
 
 ```kotlin
-@Test
-fun `create는 요청 값을 저장하고 응답으로 돌려준다`() {
-    val request = TestFixtureFactory.postCreateRequest()
-    val savedPost = TestFixtureFactory.postEntity(
-        id = 1L,
-        title = request.title,
-        content = request.content,
-        author = request.author
-    )
+fun getPost(id: Long): PostResponse {
+    val cached = postCacheService.get(id)
+    // 먼저 Redis에서 값을 찾아봅니다.
 
-    `when`(postRepository.save(any(PostEntity::class.java))).thenReturn(savedPost)
-
-    val result = postService.create(request)
-
-    assertEquals(request.title, result.title)
-}
-```
-
-- 이 코드는 **정상 케이스 테스트의 전체 흐름**을 보여줍니다.
-- 여기서는 특히 `given -> when -> then` 순서가 보이는지 먼저 보세요.
-- 학생이 기억해야 할 핵심은 **"테스트는 준비하고, 호출하고, 확인하는 흐름"**입니다.
-- 파일: `src/test/kotlin/com/andi/rest_crud/service/PostServiceTest.kt`
-
-### 2. 실패 흐름을 검증하는 테스트
-
-```kotlin
-@Test
-fun `getById는 없는 게시글 id면 예외 흐름을 확인한다`() {
-    `when`(postRepository.findById(999L)).thenReturn(Optional.empty())
-
-    assertThrows(PostNotFoundException::class.java) {
-        postService.getById(999L)
+    if (cached != null) {
+        return cached
+        // 값이 있으면 DB까지 가지 않고 바로 응답합니다.
     }
+
+    val response = postService.getById(id)
+    // miss면 그때 DB 조회로 이어집니다.
+
+    postCacheService.set(id, response)
+    // DB 결과를 다시 캐시에 넣어 다음 조회를 준비합니다.
+
+    return response
 }
 ```
 
-- 이 코드는 **예외 케이스 테스트**를 보여줍니다.
-- 학생이 기억해야 할 핵심은 **"실패도 테스트 대상"**이라는 점입니다.
-- 파일: `src/test/kotlin/com/andi/rest_crud/service/PostServiceTest.kt`
+- 이 코드는 **cache-aside 흐름의 핵심**을 보여줍니다.
+- 여기서는 특히 `cached != null` 분기와 `postCacheService.set(...)`를 먼저 보세요.
+- 학생이 기억해야 할 핵심은 **"miss는 DB 조회로 자연스럽게 이어진다"**는 점입니다.
+- 파일: `src/main/kotlin/com/andi/rest_crud/service/PostQueryService.kt`
 
-### 3. 인증 흐름도 테스트하는 코드
+### 2. 캐시에 저장할 때 TTL을 함께 두는 코드
 
 ```kotlin
-@Test
-fun `login은 올바른 이메일과 비밀번호면 access token을 만든다`() {
-    val request = TestFixtureFactory.loginRequest()
-    val encodedPassword = requireNotNull(passwordEncoder.encode(request.password))
-    val user = TestFixtureFactory.user(email = request.email, password = encodedPassword)
+fun set(postId: Long, response: PostResponse) {
+    val value = objectMapper.writeValueAsString(response)
+    // Redis에는 문자열 형태로 저장합니다.
 
-    `when`(userRepository.findByEmail(request.email)).thenReturn(Optional.of(user))
-
-    val result = authService.login(request)
-
-    assertFalse(result.accessToken.isBlank())
-    assertEquals(request.email, jwtTokenProvider.getEmail(result.accessToken))
+    stringRedisTemplate.opsForValue().set(key(postId), value, ttl())
+    // TTL을 같이 줘서 영구 저장소가 아니라는 점을 드러냅니다.
 }
 ```
 
-- 이 코드는 **인증 성공 흐름도 테스트 대상이 된다는 점**을 보여줍니다.
-- 학생이 기억해야 할 핵심은 **"Service 테스트는 CRUD에만 국한되지 않는다"**는 점입니다.
-- 파일: `src/test/kotlin/com/andi/rest_crud/service/AuthServiceTest.kt`
+- 이 코드는 **캐시 저장과 TTL 설정**을 보여줍니다.
+- 학생이 기억해야 할 핵심은 **"캐시는 저장만이 아니라 만료 시간도 같이 생각해야 한다"**는 점입니다.
+- 파일: `src/main/kotlin/com/andi/rest_crud/service/PostCacheService.kt`
+
+### 3. Redis 연결 Bean을 준비하는 코드
+
+```kotlin
+@Bean
+fun stringRedisTemplate(connectionFactory: RedisConnectionFactory): StringRedisTemplate {
+    return StringRedisTemplate(connectionFactory)
+    // 이번 실습은 가장 단순한 문자열 기반 캐시 흐름만 다룹니다.
+}
+```
+
+- 이 코드는 **애플리케이션과 Redis가 만나는 시작점**을 보여줍니다.
+- 학생이 기억해야 할 핵심은 **"이번 시퀀스는 복잡한 Redis 자료구조보다 조회 캐시 흐름이 중심"**이라는 점입니다.
+- 파일: `src/main/kotlin/com/andi/rest_crud/config/RedisConfig.kt`
 
 ## 핵심 용어를 쉬운 말로 정리하기
 
-### fixture
+### 캐시
 
 - **뜻**  
-  테스트에서 반복해서 사용할 입력값과 객체를 미리 만들어두는 도구입니다.
+  자주 다시 쓰는 데이터를 더 빠르게 꺼내기 위해 잠깐 보관해두는 저장소입니다.
 - **왜 중요한가**  
-  테스트마다 값을 새로 손으로 적지 않아도 돼서 흐름이 더 잘 보입니다.
+  매번 DB까지 가지 않아도 되는 상황을 만들 수 있습니다.
 - **이번 코드에서는 어디에 보이는가**  
-  `TestFixtureFactory` 안의 `postCreateRequest()`, `postEntity()`, `loginRequest()`, `user()`에서 볼 수 있습니다.
+  `PostCacheService`에서 볼 수 있습니다.
 - **짧은 상황 예시**  
-  게시글 생성 테스트를 할 때 제목, 내용, 작성자를 빠르게 준비할 수 있습니다.
+  같은 게시글 상세 조회를 연속으로 요청할 때 두 번째 조회를 더 가볍게 만들 수 있습니다.
 
-### mock
+### DB와 캐시 차이
 
 - **뜻**  
-  실제 DB나 외부 의존성 대신, 테스트 안에서 원하는 동작만 흉내 내는 객체입니다.
+  DB는 기준 데이터 저장소이고, 캐시는 빠른 재조회용 보조 저장소입니다.
 - **왜 중요한가**  
-  Service 로직만 따로 확인하고 싶을 때 DB까지 같이 띄우지 않아도 됩니다.
+  둘을 같은 것으로 생각하면 TTL이나 miss 흐름을 이해하기 어렵습니다.
 - **이번 코드에서는 어디에 보이는가**  
-  `mock(PostRepository::class.java)`, `mock(UserRepository::class.java)`에서 볼 수 있습니다.
+  `PostService.getById(...)`는 DB 조회, `PostCacheService.get(...)`는 캐시 조회입니다.
 - **짧은 상황 예시**  
-  `findById(999L)`가 빈 결과를 돌려주는 상황을 손쉽게 만들 수 있습니다.
+  캐시에 없으면 다시 DB로 가는 이유가 바로 이 차이 때문입니다.
 
-### given-when-then
+### cache hit
 
 - **뜻**  
-  준비(given), 실행(when), 검증(then) 순서로 테스트를 읽기 쉽게 만드는 방식입니다.
+  캐시에 이미 값이 있어서 DB를 보지 않고 바로 응답하는 상황입니다.
 - **왜 중요한가**  
-  테스트가 길어져도 어떤 값을 준비했고 무엇을 확인하는지 덜 헷갈립니다.
+  캐시를 붙이는 이유가 가장 잘 드러나는 순간입니다.
 - **이번 코드에서는 어디에 보이는가**  
-  각 테스트 메서드의 흐름과 TODO 주석에서 볼 수 있습니다.
+  `cached != null` 분기에서 볼 수 있습니다.
 - **짧은 상황 예시**  
-  요청 DTO를 만들고, Service를 호출하고, 응답 제목을 검증하는 순서가 바로 이 구조입니다.
+  같은 게시글을 두 번째 조회했을 때 Redis에서 바로 값을 꺼내는 상황입니다.
 
-## 핵심 개념 설명
+### cache miss
 
-### 1. 테스트는 결과 확인 도구입니다
+- **뜻**  
+  캐시에 값이 없어서 DB 조회로 이어지는 상황입니다.
+- **왜 중요한가**  
+  miss를 실패로 오해하지 않아야 cache-aside 흐름이 자연스럽게 보입니다.
+- **이번 코드에서는 어디에 보이는가**  
+  `PostQueryService.getPost(...)`에서 `postService.getById(...)`로 이어지는 분기입니다.
+- **짧은 상황 예시**  
+  처음 게시글을 조회할 때 캐시에 값이 없어서 DB를 보는 상황입니다.
 
-테스트는 "이 코드가 원하는 결과를 내는가"를 빠르게 확인하는 방법입니다.
-이번 실습에서는 `PostService.create()`가 요청 값을 잘 저장하는지,
-`AuthService.login()`이 실제로 토큰을 만드는지 같은 결과를 확인합니다.
+### TTL
 
-### 2. 테스트는 회귀 방지 장치입니다
+- **뜻**  
+  캐시 데이터가 얼마나 오래 살아 있을지를 정하는 시간입니다.
+- **왜 중요한가**  
+  캐시를 영구 저장소처럼 쓰지 않게 도와줍니다.
+- **이번 코드에서는 어디에 보이는가**  
+  `cache.post-ttl-seconds` 설정과 `ttl()` 메서드에서 볼 수 있습니다.
+- **짧은 상황 예시**  
+  TTL이 지나면 다시 miss가 일어나고 DB 조회가 다시 필요할 수 있습니다.
 
-회귀는 원래 되던 기능이 수정 후에 깨지는 상황을 말합니다.
-지금처럼 기능이 늘어나는 시점에는 테스트가 있어야
-"수정했더니 예전 로그인 흐름이 깨졌다" 같은 문제를 빨리 찾을 수 있습니다.
+### Redis
 
-### 3. 실패도 테스트해야 구조가 보입니다
-
-정상 케이스만 보면 코드가 안전해 보일 수 있습니다.
-하지만 실제 서비스는 없는 게시글 조회, 잘못된 비밀번호처럼
-실패 상황도 자주 만나기 때문에 예외 흐름을 같이 검증해야 구조가 더 또렷하게 보입니다.
+- **뜻**  
+  메모리 기반으로 빠르게 데이터를 저장하고 조회할 수 있는 저장소입니다.
+- **왜 중요한가**  
+  이번 시퀀스에서는 캐시를 구현하는 가장 단순한 도구로 사용합니다.
+- **이번 코드에서는 어디에 보이는가**  
+  `StringRedisTemplate`, `spring.data.redis.*` 설정에서 볼 수 있습니다.
+- **짧은 상황 예시**  
+  게시글 상세 조회 결과를 문자열로 Redis에 잠깐 저장해 둡니다.
 
 ## 이번 실습에서 꼭 보면 좋은 포인트
 
-- fixture를 쓰면 테스트 본문이 얼마나 짧아지는지
-- mock으로 "없는 게시글" 같은 상황을 얼마나 쉽게 만들 수 있는지
-- `assertEquals`와 `assertThrows`가 각각 어떤 상황에 쓰이는지
-- JWT 테스트에서 토큰 문자열 자체보다 "토큰 안의 email"을 검증하는 이유가 무엇인지
+- `PostController`가 단건 조회를 `PostQueryService`로 넘기는 이유
+- miss일 때 예외가 아니라 자연스럽게 DB 조회로 이어지는 분기
+- 캐시에 `PostResponse`를 그대로 두지 않고 문자열로 저장하는 이유
+- TTL 값을 너무 길게 잡지 않고 짧게 두는 이유
 
 ## 자주 헷갈리는 포인트
 
-- 테스트는 무조건 DB를 띄워야 하는 것이 아닙니다.
-- 이번 시퀀스는 controller 테스트나 통합 테스트까지 넓히지 않습니다.
-- fixture는 진짜 로직이 아니라 테스트 입력을 정리하는 도구입니다.
-- mock은 "가짜라서 의미 없다"가 아니라 "이번에는 Service만 집중해서 본다"는 뜻에 가깝습니다.
+- 캐시는 DB를 대체하는 것이 아닙니다.
+- cache miss는 오류가 아니라 정상적인 첫 조회 흐름입니다.
+- 이번 시퀀스는 Redis 전체 기능을 배우는 단계가 아닙니다.
+- TTL이 없으면 캐시를 영구 저장처럼 오해하기 쉽습니다.
 
 ## 직접 말해보기
 
-- 지금 시점에서 테스트가 왜 필요한가요?
-- 정상 케이스와 예외 케이스는 각각 무엇을 확인하나요?
-- fixture와 mock은 어떤 차이가 있나요?
-- `PostServiceTest`와 `AuthServiceTest`는 각각 어떤 흐름을 검증하나요?
+- 왜 자주 조회되는 데이터에 캐시를 붙이면 좋을까요?
+- cache hit와 miss는 각각 어떤 상황인가요?
+- DB와 캐시는 역할이 어떻게 다른가요?
+- TTL이 없으면 어떤 오해나 문제가 생길 수 있나요?
 
 ## 복습 체크리스트
 
-- [ ] 테스트가 왜 필요한지 한 문장으로 설명할 수 있습니다.
-- [ ] 정상 케이스와 예외 케이스를 구분해서 설명할 수 있습니다.
-- [ ] fixture와 mock이 각각 어디에 쓰이는지 말할 수 있습니다.
-- [ ] `PostService`와 `AuthService` 테스트 흐름을 다시 설명할 수 있습니다.
-- [ ] 테스트가 구조 점검 도구라는 점을 이해했습니다.
+- [ ] DB와 캐시의 차이를 설명할 수 있습니다.
+- [ ] cache hit와 miss를 각각 말할 수 있습니다.
+- [ ] 캐시에 없으면 DB 조회로 이어진다는 흐름을 설명할 수 있습니다.
+- [ ] TTL이 왜 필요한지 설명할 수 있습니다.
+- [ ] 이번 실습에서 Redis가 어떤 역할을 맡는지 설명할 수 있습니다.
 
-## 오늘 실습에서 꼭 기억할 것
+## 오늘 꼭 기억할 것
 
-이번 시퀀스의 핵심은 테스트 문법을 많이 외우는 것이 아닙니다.
-대신 "이미 만든 기능을 다시 믿기 위해 어떤 테스트를 붙이면 되는가"를 손으로 직접 연결해보는 것입니다.
+이번 시퀀스의 핵심은 Redis 기능을 많이 배우는 것이 아닙니다.
+대신 "자주 조회되는 데이터를 더 빠르게 다시 꺼내기 위해 캐시를 어떻게 앞에 두는가"를
+가장 단순한 흐름으로 이해하는 것입니다.
 
 ## 다음 실습과 연결하기
 
-다음 시퀀스에서 캐시나 성능 관련 흐름이 붙기 시작하면,
-"이 변경이 기존 기능을 깨뜨리지 않았는가"를 더 자주 확인해야 합니다.
-그래서 이번 테스트 시퀀스는 다음 확장 실습으로 넘어가기 전 안전장치를 준비하는 단계입니다.
+다음 시퀀스에서 실시간 통신으로 넘어가면,
+데이터가 더 자주 오가고 응답 흐름이 더 즉각적으로 느껴져야 하는 순간이 많아집니다.
+그래서 이번 캐시 시퀀스는 "속도와 흐름을 어떻게 보조할 것인가"를 생각하기 시작하는 첫 단계입니다.
