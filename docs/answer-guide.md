@@ -7,6 +7,9 @@
 - `PostCacheService.set(...)`가 TTL과 함께 값을 저장하는가
 - `PostQueryService.getPost(...)`가 hit/miss 분기를 올바르게 연결하는가
 
+이번 answer는 "Redis를 붙였다"에서 끝나는 것이 아니라,
+왜 조회 캐시 뒤에는 무효화 전략도 같이 따라와야 하는지까지 이해하는 기준입니다.
+
 ## 1. Redis 연결 정답 포인트
 
 - 이번 시퀀스는 `StringRedisTemplate` 하나로 충분합니다.
@@ -52,9 +55,11 @@ return objectMapper.readValue(value, PostResponse::class.java)
 ```kotlin
 val cached = postCacheService.get(id)
 if (cached != null) {
+    logger.info("cache hit for post {}", id)
     return cached
 }
 
+logger.info("cache miss for post {}", id)
 val response = postService.getById(id)
 postCacheService.set(id, response)
 return response
@@ -71,23 +76,69 @@ return response
 stringRedisTemplate.opsForValue().set(key(postId), value, ttl())
 ```
 
-## 5. hit/miss 확인 방법
+## 5. 왜 stale data까지 같이 봐야 하는가
+
+조회 캐시를 붙이면 읽기는 빨라질 수 있습니다.
+하지만 수정 이후 캐시를 그대로 두면,
+DB는 바뀌었는데 Redis는 예전 값을 들고 있을 수 있습니다.
+
+문제 코드 예시:
+
+```kotlin
+fun updatePost(id: Long, request: PostUpdateRequest): PostResponse {
+    return postService.update(id, request)
+}
+```
+
+이 경우 TTL이 끝나기 전까지는 예전 응답이 남을 수 있습니다.
+
+## 6. 캐시 무효화 예시 코드
+
+이번 시퀀스의 메인 구현은 조회 캐시지만,
+정답 가이드에서는 수정/삭제 이후 어떤 방향으로 풀어야 하는지도 같이 이해해야 합니다.
+
+예시 핵심:
+
+```kotlin
+fun updatePost(id: Long, request: PostUpdateRequest): PostResponse {
+    val updated = postService.update(id, request)
+    postCacheService.evict(id)
+    return updated
+}
+```
+
+```kotlin
+fun deletePost(id: Long) {
+    postService.delete(id)
+    postCacheService.evict(id)
+}
+```
+
+포인트는 아래입니다.
+
+- TTL은 자동 만료용 안전장치입니다.
+- evict는 수정/삭제 직후 오래된 값을 바로 치우는 장치입니다.
+- 실무에서는 둘을 함께 설계하는 경우가 많습니다.
+
+## 7. hit/miss 확인 방법
 
 1. 게시글을 생성합니다.
 2. 처음 `GET /posts/{id}`를 호출합니다.
-   - 보통 miss -> DB 조회 -> 캐시 저장입니다.
+   - 보통 `miss -> DB 조회 -> 캐시 저장`입니다.
 3. 같은 요청을 다시 호출합니다.
-   - 보통 hit -> 캐시 응답입니다.
-4. TTL이 지난 뒤 다시 호출하면 miss가 다시 일어날 수 있습니다.
+   - 보통 `hit -> 캐시 응답`입니다.
+4. 게시글을 수정한 뒤 캐시를 지우지 않으면 예전 값이 남을 수 있음을 문서로 함께 이해합니다.
+5. TTL이 지난 뒤 다시 호출하면 miss가 다시 일어날 수 있습니다.
 
-## 6. 강사용 빠른 비교 포인트
+## 8. 강사용 빠른 비교 포인트
 
 - miss를 예외로 처리하지 않았는지
 - key 생성이 단순하고 읽기 쉬운지
 - TTL이 설정과 코드에서 함께 보이는지
-- `PostQueryService`에서 cache-aside 흐름이 짧고 선명하게 보이는지
+- `PostQueryService`에서 `cache-aside` 흐름이 짧고 선명하게 보이는지
+- stale data와 evict 필요성을 설명할 수 있는지
 
-## 7. answer 기준 완성 형태
+## 9. answer 기준 완성 형태
 
 `07-answer`에서는 아래 파일이 완성되어 있습니다.
 
@@ -97,4 +148,5 @@ stringRedisTemplate.opsForValue().set(key(postId), value, ttl())
 - `src/main/kotlin/com/andi/rest_crud/controller/PostController.kt`
 
 핵심은 Redis 기능을 많이 넣는 것이 아니라,
-조회 1개 흐름에 cache-aside를 가장 단순하게 붙여보는 것입니다.
+조회 1개 흐름에 `cache-aside`를 가장 단순하게 붙여보고,
+그 다음 질문으로 "그럼 오래된 값은 어떻게 정리할까?"까지 떠올릴 수 있게 만드는 것입니다.
