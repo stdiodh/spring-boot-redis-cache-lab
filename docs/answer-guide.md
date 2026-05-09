@@ -1,6 +1,6 @@
-# 캐시와 Redis 정답 가이드
+# 캐시와 Redis 참고 구현 가이드
 
-## 정답을 보기 전에 먼저 확인할 것
+## 참고 구현을 보기 전에 먼저 확인할 것
 
 - `StringRedisTemplate` Bean이 준비되어 있는가
 - `PostCacheService.get(...)`가 miss일 때 `null`을 반환하는가
@@ -10,7 +10,7 @@
 이번 answer는 "Redis를 붙였다"에서 끝나는 것이 아니라,
 왜 조회 캐시 뒤에는 무효화 전략도 같이 따라와야 하는지까지 이해하는 기준입니다.
 
-## 1. Redis 연결 정답 포인트
+## 1. Redis 연결 참고 구현 포인트
 
 - 이번 시퀀스는 `StringRedisTemplate` 하나로 충분합니다.
 - 복잡한 자료구조보다 문자열 저장/조회 흐름이 잘 보이는 것이 중요합니다.
@@ -24,9 +24,9 @@ fun stringRedisTemplate(connectionFactory: RedisConnectionFactory): StringRedisT
 }
 ```
 
-## 2. 캐시 조회 정답 포인트
+## 2. 캐시 조회 참고 구현 포인트
 
-정답 흐름은 아래 순서입니다.
+참고 구현 흐름은 아래 순서입니다.
 
 1. `postId`로 키를 만듭니다.
 2. Redis에서 문자열 값을 조회합니다.
@@ -40,9 +40,9 @@ val value = stringRedisTemplate.opsForValue().get(key(postId)) ?: return null
 return objectMapper.readValue(value, PostResponse::class.java)
 ```
 
-## 3. miss -> DB 조회 -> 캐시 저장 정답 포인트
+## 3. miss -> DB 조회 -> 캐시 저장 참고 구현 포인트
 
-정답 흐름은 아래 순서입니다.
+참고 구현 흐름은 아래 순서입니다.
 
 1. `postCacheService.get(id)`를 먼저 호출합니다.
 2. 값이 있으면 바로 반환합니다.
@@ -65,7 +65,7 @@ postCacheService.set(id, response)
 return response
 ```
 
-## 4. TTL 설정 정답 포인트
+## 4. TTL 설정 참고 구현 포인트
 
 - TTL은 `cache.post-ttl-seconds` 설정값으로 관리합니다.
 - 저장 시 `opsForValue().set(key, value, ttl())` 형태로 연결하면 됩니다.
@@ -95,7 +95,7 @@ fun updatePost(id: Long, request: PostUpdateRequest): PostResponse {
 ## 6. 캐시 무효화 예시 코드
 
 이번 시퀀스의 메인 구현은 조회 캐시지만,
-정답 가이드에서는 수정/삭제 이후 어떤 방향으로 풀어야 하는지도 같이 이해해야 합니다.
+참고 구현 가이드에서는 수정/삭제 이후 어떤 방향으로 풀어야 하는지도 같이 이해해야 합니다.
 
 예시 핵심:
 
@@ -130,7 +130,7 @@ fun deletePost(id: Long) {
 4. 게시글을 수정한 뒤 캐시를 지우지 않으면 예전 값이 남을 수 있음을 문서로 함께 이해합니다.
 5. TTL이 지난 뒤 다시 호출하면 miss가 다시 일어날 수 있습니다.
 
-## 8. 강사용 빠른 비교 포인트
+## 8. 리뷰용 빠른 비교 포인트
 
 - miss를 예외로 처리하지 않았는지
 - key 생성이 단순하고 읽기 쉬운지
