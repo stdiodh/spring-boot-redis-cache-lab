@@ -19,10 +19,10 @@ Redis 기반 cache-aside 패턴을 붙이는 단계입니다.
 ## 브랜치 사용 방법
 
 - `main`: 이 레포의 주제, 문서, 브랜치 구조를 안내하는 대표 브랜치
-- `07-implementation`: 학생 실습용 starter 브랜치
-- `07-answer`: 비교용 정답 브랜치
+- `07-implementation`: 실습용 starter 브랜치
+- `07-answer`: 참고 구현 브랜치
 
-학생은 반드시 `07-implementation`에서 시작합니다.
+실습은 반드시 `07-implementation`에서 시작합니다.
 
 ```bash
 git clone -b 07-implementation https://github.com/stdiodh/spring-boot-redis-cache-lab.git
@@ -30,7 +30,7 @@ cd spring-boot-redis-cache-lab
 git checkout -b feat/<이름>
 ```
 
-정답 비교가 필요할 때는 아래 흐름을 사용합니다.
+참고 구현 비교가 필요할 때는 아래 흐름을 사용합니다.
 
 ```bash
 git fetch origin
@@ -41,7 +41,7 @@ git diff origin/07-implementation..origin/07-answer
 
 - [이론 문서](./docs/theory.md)
 - [구현 안내](./docs/implementation.md)
-- [정답 가이드](./docs/answer-guide.md)
+- [참고 구현 가이드](./docs/answer-guide.md)
 - [체크리스트](./docs/checklist.md)
 - [제공 자료 안내](./docs/assets.md)
 
@@ -67,7 +67,7 @@ git diff origin/07-implementation..origin/07-answer
 - Redis host/port, TTL 설정 자리
 - `PostController`와 `PostService` 기본 조회 구조
 
-학생은 캐시 조회와 저장의 핵심 흐름만 직접 구현합니다.
+실습자는 캐시 조회와 저장의 핵심 흐름만 직접 구현합니다.
 실무 확장 개념으로는 `캐시 무효화 전략`을 문서에서 함께 이해합니다.
 
 ## 실행 방법
