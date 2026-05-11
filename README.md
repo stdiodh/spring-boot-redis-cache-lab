@@ -1,36 +1,82 @@
 # Spring Boot Redis Cache Lab
 
-이 레포는 A&I 백엔드 커리큘럼 중
-`07. 캐시와 Redis` 시퀀스를 담는 토픽 레포입니다.
+이 레포는 A&I 백엔드 커리큘럼의 `07. 캐시와 Redis` 시퀀스를 담는 토픽 레포입니다.
+`main`은 가이드 브랜치이고, 학생 실습은 `07-implementation`에서 시작합니다.
 
-`main` 브랜치는 학생이 바로 실습하는 브랜치가 아니라,
-이 레포가 어떤 주제를 담고 있고 어떤 브랜치에서 수업을 진행해야 하는지 안내하는 대표 브랜치입니다.
+## 이 레포에서 배우는 것
 
-## 이 레포가 다루는 내용
-
-- `07`: Redis 기반 cache-aside 조회 캐시
+- Redis 기반 cache-aside 조회 캐시
 - DB와 캐시의 역할 차이
 - cache hit / miss 흐름
 - TTL과 캐시 만료 감각
 - stale data와 캐시 무효화 전략 입문
 
-즉 이 레포는 "기존 DB 조회 흐름 위에 캐시를 어떻게 얹는가"와
-"수정 이후 오래된 값을 어떻게 정리해야 하는가"를
-가장 단순한 입문 수준으로 다루는 실습 레포입니다.
-
-## 브랜치 사용 방법
-
-- `main`: 레포 소개와 브랜치 안내
-- `07-implementation`, `07-answer`
-
-학생은 항상 `07-implementation`에서 시작하고,
-강사는 `07-answer`에서 비교합니다.
-
-예:
+## 시작 방법
 
 ```bash
-git clone -b 07-implementation https://github.com/stdiodh/spring-boot-redis-cache-lab.git
+git clone https://github.com/stdiodh/spring-boot-redis-cache-lab.git
 cd spring-boot-redis-cache-lab
+git checkout 07-implementation
+```
+
+## 실습 브랜치
+
+| 용도 | 브랜치 |
+| --- | --- |
+| 가이드 | `main` |
+| 학생 시작 | `07-implementation` |
+| 참고 정답 | `07-answer` |
+
+## 실행 방법
+
+```bash
+docker compose up -d
+./gradlew bootRun
+```
+
+Swagger UI 기본 경로:
+
+```text
+http://localhost:8080/swagger
+```
+
+## 테스트 방법
+
+```bash
+./gradlew test
+```
+
+테스트가 확인하는 것:
+
+- cache miss 시 DB를 조회하고 Redis에 저장하는지 확인합니다.
+- cache hit 시 캐시 값을 반환하는지 확인합니다.
+- 데이터 수정 또는 삭제 후 cache invalidation이 일어나는지 확인합니다.
+
+실패하면 먼저 볼 것:
+
+- 캐시 key가 저장/조회/삭제에서 같은 규칙을 쓰는지 확인합니다.
+- DB 조회 횟수나 로그로 hit/miss 판단 기준이 분명한지 봅니다.
+
+완료 기준:
+
+- cache miss, cache hit, invalidation 테스트가 통과합니다.
+
+## 정답과 비교하는 방법
+
+실습 중 막혔거나 완료 후 확인이 필요할 때만 참고 정답 브랜치와 비교합니다.
+
+```bash
+git fetch origin
+git diff 07-implementation..07-answer
+```
+
+## Visual Lab
+
+현재 `main` 가이드 브랜치에는 Visual Lab 진입점이 없습니다.
+Visual Lab을 구현할 경우 이 레포의 아래 위치를 사용합니다.
+
+```text
+docs/visual-lab/index.html
 ```
 
 ## 문서 안내
@@ -38,37 +84,3 @@ cd spring-boot-redis-cache-lab
 - [레포 가이드](./docs/repo-guide.md)
 - [브랜치 가이드](./docs/branch-guide.md)
 - [시퀀스 맵](./docs/sequence-map.md)
-
-각 시퀀스의 실제 실습 문서는 해당 브랜치 안에서 확인합니다.
-
-예:
-- `07-implementation`의 `docs/theory.md`, `docs/implementation.md`
-- `07-answer`의 `docs/answer-guide.md`
-
-## 실행 기준
-
-- 앱 런타임 DB: MySQL
-- 캐시 저장소: Redis
-- 테스트 DB: H2 in-memory
-- Swagger UI 기본 경로: `http://localhost:8080/swagger`
-
-MySQL과 Redis가 필요할 때는 각 시퀀스 브랜치의 `compose.yaml`을 사용합니다.
-
-## 현재 정리 상태
-
-| Sequence | Starter | Answer | Status |
-| --- | --- | --- | --- |
-| 07 | `07-implementation` | `07-answer` | Ready |
-
-## 이 레포를 어떻게 보면 좋나요
-
-1. 먼저 `main`에서 이 README와 `docs/branch-guide.md`를 읽습니다.
-2. `07-implementation` 브랜치로 이동합니다.
-3. 그 브랜치의 `README.md`, `docs/theory.md`, `docs/implementation.md` 순서로 봅니다.
-4. 실습 후 `07-answer` 브랜치와 비교합니다.
-
-## 운영 메모
-
-- 이 레포는 `spring-boot-db-access-lab`의 `06-answer` 다음 단계에서 분리된 새 토픽 레포입니다.
-- 이 레포의 `main` 브랜치는 실습 완료본이 아니라 안내 브랜치입니다.
-- 시퀀스 문서는 각 브랜치 안에서 계속 바뀌어야 하며, 이전 시퀀스 문서를 그대로 재사용하면 안 됩니다.

@@ -1,0 +1,80 @@
+window.visualLabData = {
+  sequence: "07",
+  title: "Redis Cache",
+  goal: "조회 요청에서 cache hit, cache miss, invalidation이 언제 발생하는지 시각적으로 따라간다.",
+  implementationBranch: "07-implementation",
+  concepts: [
+    {
+      name: "Cache Hit",
+      description: "필요한 데이터가 Redis에 있어 DB 조회 없이 응답하는 상태다.",
+    },
+    {
+      name: "Cache Miss",
+      description: "Redis에 데이터가 없어 DB에서 읽고 캐시에 다시 저장하는 상태다.",
+    },
+    {
+      name: "TTL",
+      description: "캐시 데이터가 유지되는 시간을 제한해 오래된 값을 줄인다.",
+    },
+    {
+      name: "Invalidation",
+      description: "수정 또는 삭제 후 오래된 캐시를 제거하는 작업이다.",
+    },
+  ],
+  flow: [
+    {
+      id: "request",
+      title: "조회 요청이 들어온다",
+      actor: "Client",
+      target: "PostQueryService",
+      description: "클라이언트가 게시글 목록 또는 단건 조회를 요청한다.",
+      checkpoint: "읽기 요청인지 쓰기 요청인지 먼저 구분한다.",
+    },
+    {
+      id: "cache-lookup",
+      title: "Redis 캐시를 먼저 확인한다",
+      actor: "PostQueryService",
+      target: "Redis",
+      description: "정해진 cache key로 Redis에 데이터가 있는지 조회한다.",
+      checkpoint: "cache key가 요청 조건을 충분히 표현하는지 확인한다.",
+    },
+    {
+      id: "cache-miss",
+      title: "캐시에 없으면 DB로 간다",
+      actor: "PostQueryService",
+      target: "Database",
+      description: "cache miss가 발생하면 기존 Repository 흐름으로 데이터를 조회한다.",
+      checkpoint: "miss 상황에서 DB 조회가 한 번만 일어나는지 본다.",
+    },
+    {
+      id: "cache-save",
+      title: "조회 결과를 캐시에 저장한다",
+      actor: "PostQueryService",
+      target: "Redis",
+      description: "DB에서 읽은 결과를 다음 요청이 재사용할 수 있도록 Redis에 저장한다.",
+      checkpoint: "TTL과 직렬화 형식이 의도대로 적용되는지 확인한다.",
+    },
+    {
+      id: "cache-hit",
+      title: "다음 요청은 캐시로 응답한다",
+      actor: "Redis",
+      target: "Client",
+      description: "같은 조건의 요청은 Redis 값으로 빠르게 응답한다.",
+      checkpoint: "로그나 테스트로 DB 조회가 줄었는지 확인한다.",
+    },
+    {
+      id: "invalidate",
+      title: "변경 시 캐시를 지운다",
+      actor: "Command Service",
+      target: "Redis",
+      description: "게시글 수정 또는 삭제 후 오래된 캐시를 제거한다.",
+      checkpoint: "쓰기 작업 이후 조회 결과가 최신 데이터로 바뀌는지 확인한다.",
+    },
+  ],
+  checkpoints: [
+    "cache hit와 miss를 로그 또는 테스트로 구분한다.",
+    "쓰기 작업 후 오래된 캐시가 남지 않는지 확인한다.",
+    "TTL이 지나면 다시 DB 조회가 일어나는지 확인한다.",
+    "실습은 07-implementation 브랜치에서 시작한다.",
+  ],
+};
