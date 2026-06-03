@@ -1,173 +1,124 @@
-# 캐시와 Redis 구현 안내
+# 구현 가이드
 
-## 이 도메인이 필요한 이유
+이 문서는 `07-answer` 브랜치의 참고 구현을 기준으로 설명합니다.
+starter 브랜치에서 먼저 구현한 뒤, cache-aside 흐름과 stale data 대응 기준을 비교할 때 사용합니다.
 
-지금까지는 저장과 검증, 인증, 테스트까지 흐름을 만들었습니다.
-다음으로는 같은 데이터를 자주 조회할 때
-매번 DB만 보는 구조가 어떤 한계를 가질 수 있는지 생각해볼 차례입니다.
+## 1. 구현 전에 확인할 문제
 
-그래서 이번 실습은 기존 게시글 조회 앞에 Redis 캐시를 얹어 보면서,
-가장 단순한 `cache-aside` 흐름을 손으로 직접 연결하는 단계입니다.
+자주 조회되는 게시글을 매번 DB에서만 읽으면 같은 데이터를 반복해서 조회하게 됩니다.
+캐시를 붙이면 조회 부담은 줄일 수 있지만, 최신성 문제도 함께 봐야 합니다.
 
-## 오늘 실습에서 완성할 최종 흐름
+## 2. 구현 순서
 
-1. `GET /posts/{id}` 요청이 들어옵니다.
-2. `PostQueryService`가 먼저 Redis를 조회합니다.
-3. 캐시에 값이 있으면 바로 응답합니다.
-4. 캐시에 값이 없으면 DB에서 게시글을 조회합니다.
-5. 조회 결과를 Redis에 저장합니다.
-6. TTL이 지나면 다시 miss가 일어날 수 있음을 이해합니다.
-7. 수정 이후 캐시를 안 지우면 오래된 값이 남을 수 있음을 이해합니다.
+1. Redis 연결용 `StringRedisTemplate` Bean을 확인합니다.
+2. `PostCacheService`에서 key, 조회, 저장, TTL 흐름을 확인합니다.
+3. `PostQueryService`에서 hit/miss 분기를 확인합니다.
+4. 같은 게시글을 두 번 조회해 hit/miss 차이를 확인합니다.
+5. 수정 후 stale data가 생길 수 있는 이유를 설명합니다.
 
-## 이번 실습에서 같이 봐야 하는 실무 질문
+## 3. Step 1. Redis 템플릿
 
-1. 캐시는 왜 조회를 빠르게 만들지만 동시에 stale data를 만들 수 있는가
-2. TTL만 두는 것과 수정/삭제 시점에 evict를 하는 것은 무엇이 다른가
+### 해야 할 일
 
-## 실습자가 직접 구현할 순서
+```kotlin
+@Bean
+fun stringRedisTemplate(connectionFactory: RedisConnectionFactory): StringRedisTemplate {
+    return StringRedisTemplate(connectionFactory)
+}
+```
 
-1. `RedisConfig.kt`에서 Redis 템플릿 Bean을 확인합니다.
-2. `PostCacheService.kt`에서 캐시 조회 메서드를 완성합니다.
-3. 같은 파일에서 캐시 저장 메서드와 TTL 연결을 완성합니다.
-4. `PostQueryService.kt`에서 `miss -> DB 조회 -> 캐시 저장` 흐름을 완성합니다.
-5. `GET /posts/{id}`를 두 번 호출하며 hit/miss 차이를 확인합니다.
-6. 문서에서 캐시 무효화 전략까지 같이 읽습니다.
+### 왜 이 작업을 하는가
 
-## TODO를 넣을 파일
+이번 시퀀스는 Redis 자료구조를 깊게 다루지 않습니다.
+문자열 기반 캐시만으로 조회 캐시의 흐름을 충분히 확인할 수 있습니다.
 
-- `src/main/kotlin/com/andi/rest_crud/config/RedisConfig.kt`
-- `src/main/kotlin/com/andi/rest_crud/service/PostCacheService.kt`
-- `src/main/kotlin/com/andi/rest_crud/service/PostQueryService.kt`
+### 확인 방법
 
-핵심 TODO는 `RedisConfig.kt`, `PostCacheService.kt`에 집중되어 있고,
-조회 흐름 연결은 `PostQueryService.kt`에서 마무리합니다.
+애플리케이션이 Redis 설정을 읽고 실행되는지 확인합니다.
 
-## 각 파일의 역할
+## 4. Step 2. 캐시 조회와 저장
 
-### `RedisConfig.kt`
+### 해야 할 일
 
-- Spring과 Redis를 연결하는 `StringRedisTemplate` Bean을 준비하는 곳입니다.
-- 이번 시퀀스에서는 가장 단순한 문자열 캐시만 다룹니다.
+```kotlin
+val value = stringRedisTemplate.opsForValue().get(key(postId)) ?: return null
+return objectMapper.readValue(value, PostResponse::class.java)
+```
 
-### `PostCacheService.kt`
+```kotlin
+stringRedisTemplate.opsForValue().set(key(postId), value, ttl())
+```
 
-- Redis에서 게시글 캐시를 읽고 쓰는 역할을 맡습니다.
-- key, TTL, 문자열 변환 흐름이 여기서 보입니다.
+### 왜 이 작업을 하는가
 
-### `PostQueryService.kt`
+`PostCacheService`가 key, JSON 변환, TTL 책임을 모으면 조회 흐름은 `PostQueryService`에서 더 선명해집니다.
 
-- 먼저 캐시를 보고, miss면 DB를 보는 `cache-aside` 흐름을 모읍니다.
-- 이번 시퀀스에서 hit/miss가 가장 잘 보이는 파일입니다.
+### 확인 방법
 
-## 단계별 구현 안내
+값이 없을 때 `null`을 반환해 miss로 이어지는지, 저장 시 TTL이 적용되는지 확인합니다.
 
-### 1. Redis 템플릿 준비 확인
+## 5. Step 3. Cache-aside 연결
 
-`RedisConfig.kt`에서 `StringRedisTemplate` Bean을 먼저 봅니다.
-이번 실습은 Redis 자료구조를 깊게 다루지 않으므로,
-문자열 기반 캐시만 써도 흐름을 충분히 이해할 수 있습니다.
+### 해야 할 일
 
-### 2. 캐시 조회 메서드 완성
+```kotlin
+val cached = postCacheService.get(id)
+if (cached != null) {
+    logger.info("cache hit for post {}", id)
+    return cached
+}
 
-`PostCacheService.kt`의 `get(postId)`에서 아래 순서로 구현합니다.
+logger.info("cache miss for post {}", id)
+val response = postService.getById(id)
+postCacheService.set(id, response)
+return response
+```
 
-1. `key(postId)`로 캐시 키를 만듭니다.
-2. `opsForValue().get(...)`로 문자열 값을 조회합니다.
-3. 값이 있으면 `PostResponse`로 되돌립니다.
-4. 값이 없으면 `null`을 반환합니다.
+### 왜 이 작업을 하는가
 
-여기서 중요한 점은 miss를 실패로 처리하지 않는 것입니다.
-지금은 `cache miss`가 일어나는 순간을 오히려 자연스러운 첫 조회 흐름으로 읽는 것이 중요합니다.
+기존 DB 조회 흐름을 완전히 바꾸지 않고도 조회 앞에 캐시를 붙일 수 있습니다.
+hit는 빠른 응답, miss는 DB 조회로 이어지는 정상 흐름입니다.
 
-### 3. 캐시 저장 메서드와 TTL 연결
+### 확인 방법
 
-같은 파일의 `set(postId, response)`에서는 아래 순서로 구현합니다.
+같은 `GET /posts/{id}` 요청을 두 번 호출해 로그 차이를 확인합니다.
 
-1. `PostResponse`를 문자열로 바꿉니다.
-2. `opsForValue().set(...)`으로 Redis에 저장합니다.
-3. `ttl()`을 함께 넣어 만료 시간을 연결합니다.
+## 6. Step 4. Stale data와 evict
 
-이 단계에서 실습자가 먼저 이해해야 하는 문장:
+### 해야 할 일
 
-- "TTL은 캐시를 영구 저장소로 오해하지 않게 하는 안전장치다."
-- "하지만 TTL만으로는 수정 직후 stale data를 바로 없애지 못할 수 있다."
+```kotlin
+fun updatePost(id: Long, request: PostUpdateRequest): PostResponse {
+    val updated = postService.update(id, request)
+    postCacheService.evict(id)
+    return updated
+}
+```
 
-### 4. 조회 흐름에 cache-aside 연결
+### 왜 이 작업을 하는가
 
-`PostQueryService.kt`에서는 아래 순서만 지키면 됩니다.
+DB가 바뀐 뒤 캐시를 그대로 두면 오래된 응답이 나갈 수 있습니다.
+evict는 수정/삭제 직후 오래된 캐시를 명시적으로 치우는 가장 단순한 방식입니다.
 
-1. 먼저 `postCacheService.get(id)`를 호출합니다.
-2. 값이 있으면 바로 반환합니다.
-3. 값이 없으면 `postService.getById(id)`로 DB 조회를 합니다.
-4. 조회 결과를 `postCacheService.set(id, response)`로 저장합니다.
-5. 마지막에 응답을 반환합니다.
+### 확인 방법
 
-이 단계의 핵심은 단순히 `if` 문을 완성하는 것이 아니라,
-`hit -> 즉시 응답`, `miss -> DB 조회 -> set`으로 흐름이 분리된다는 점을 보는 것입니다.
+TTL과 evict가 각각 자동 만료와 즉시 정리라는 다른 문제를 다룬다는 점을 설명합니다.
 
-### 5. hit/miss 차이 확인
-
-앱을 실행한 뒤 게시글을 하나 만든 다음,
-같은 `GET /posts/{id}` 요청을 두 번 보내보면 됩니다.
-
-1. 첫 번째 요청은 보통 `miss -> DB 조회 -> 캐시 저장` 흐름입니다.
-2. 두 번째 요청은 `hit -> 바로 응답` 흐름입니다.
-
-가능하면 실습자에게 "그럼 게시글 수정 직후에는 어떤 값이 보일까?"를 같이 질문해보는 것이 좋습니다.
-
-## 미리 제공할 것
-
-- `06-answer` 기준 게시글 CRUD와 인증 관련 코드
-- Redis 의존성 추가 자리
-- Redis host/port와 TTL 설정 자리
-- MySQL + Redis `compose.yaml`
-- `PostController`와 `PostService` 기본 구조
-- 캐시 무효화 전략을 설명할 문서 구조
-
-## 실행 확인 방법
-
-1. 먼저 MySQL과 Redis를 띄웁니다.
+## 마지막 확인
 
 ```bash
 docker compose up -d
-```
-
-2. 애플리케이션을 실행합니다.
-
-```bash
+./gradlew test
 ./gradlew bootRun
 ```
 
-3. Swagger에서 게시글을 하나 생성합니다.
-4. 같은 `GET /posts/{id}` 요청을 두 번 호출합니다.
-5. 로그와 Redis 데이터를 보며 hit/miss 흐름을 확인합니다.
+Swagger에서 같은 게시글을 두 번 조회하고 hit/miss 로그를 확인합니다.
 
-테스트는 아래처럼 실행합니다.
+<details>
+<summary>멘토용 진행 포인트</summary>
 
-```bash
-./gradlew test
-```
+- 코드 비교 전 cache-aside 흐름을 말로 먼저 설명하게 합니다.
+- key, TTL, JSON 변환이 `PostCacheService`에 모인 이유를 질문합니다.
+- stale data 질문은 수정 직후 사용자에게 어떤 값이 보이는지로 연결합니다.
 
-## 실습자 체크 질문
-
-- miss가 왜 실패가 아니라 정상 흐름인가요?
-- 캐시를 먼저 보고 DB를 나중에 보는 이유는 무엇인가요?
-- TTL이 없으면 캐시를 어떻게 오해하기 쉬울까요?
-- 이번 코드에서 hit가 일어나는 지점은 어디인가요?
-- 수정 후 캐시를 안 지우면 어떤 문제가 생길 수 있나요?
-- TTL과 evict는 무엇이 다른가요?
-
-## 리뷰어 / PPT 체크 포인트
-
-- DB와 캐시 역할 차이를 그림으로 보여줄 수 있는가
-- hit와 miss를 같은 슬라이드에서 비교할 수 있는가
-- TTL을 왜 넣는지 한 문장으로 설명할 준비가 되어 있는가
-- `PostQueryService` 한 파일로 `cache-aside` 흐름을 시연할 수 있는가
-- stale data 예시와 evict 필요성을 함께 설명할 준비가 되어 있는가
-
-## 다음 도메인 연결 포인트
-
-다음 시퀀스에서 실시간 통신으로 가면,
-사용자는 더 빠른 반응과 더 즉각적인 흐름을 기대하게 됩니다.
-이번 실습은 그런 흐름 앞에서 "조회 부담을 어떻게 줄일 것인가"와
-"빠름과 최신성 사이의 균형을 어떻게 볼 것인가"를 생각하는 시작점입니다.
+</details>

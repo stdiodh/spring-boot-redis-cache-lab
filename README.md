@@ -1,109 +1,73 @@
-# Spring Boot Redis Cache Lab
+# 07 Redis Cache
 
-Redis를 이용해 가장 단순한 조회 캐시 흐름을 붙여보는 실습 레포입니다.
+이 브랜치는 `07-answer` 참고 구현 브랜치입니다.
+게시글 단건 조회 앞에 Redis cache-aside 흐름을 붙이고, hit/miss, TTL, stale data를 비교합니다.
 
-## 이 시퀀스에서 무엇을 배우나요
+## 이 시퀀스에서 다루는 문제
 
-이번 실습은 `06-answer`까지 만든 조회 흐름 위에
-Redis 기반 cache-aside 패턴을 붙이는 단계입니다.
+같은 게시글을 반복 조회할 때 매번 DB만 보면 조회 비용이 계속 발생합니다.
+Redis 캐시를 앞에 두면 조회 부담을 줄일 수 있지만, 수정 후 오래된 값이 남는 stale data 문제도 함께 고려해야 합니다.
 
-이번 레포에서는 아래 흐름에 집중합니다.
+## 학습 목표
 
-1. 먼저 캐시를 조회합니다.
-2. 캐시에 없으면 DB를 조회합니다.
-3. DB 조회 결과를 캐시에 저장합니다.
-4. 다음 조회에서 cache hit가 일어나는지 확인합니다.
-5. TTL로 캐시가 영구 저장소가 아니라는 점을 이해합니다.
-6. 수정 후 캐시를 지우지 않으면 왜 예전 값이 남을 수 있는지 이해합니다.
+- DB와 캐시의 역할 차이를 설명합니다.
+- cache hit와 cache miss를 게시글 조회 흐름으로 설명합니다.
+- `PostCacheService`와 `PostQueryService`의 책임을 구분합니다.
+- TTL과 evict가 해결하는 문제가 어떻게 다른지 비교합니다.
+- 조회 캐시가 최신성을 자동으로 보장하지 않는다는 점을 설명합니다.
 
-## 브랜치 사용 방법
+## 멘티 시작 흐름
 
-- `main`: 이 레포의 주제, 문서, 브랜치 구조를 안내하는 대표 브랜치
-- `07-implementation`: 실습용 starter 브랜치
-- `07-answer`: 참고 구현 브랜치
+starter 브랜치에서 먼저 Redis 연결, 캐시 조회/저장, cache-aside 흐름을 직접 구현합니다.
+이 브랜치는 실습 후 hit/miss 코드와 stale data 대응 방향을 비교할 때 사용합니다.
 
-실습은 반드시 `07-implementation`에서 시작합니다.
+## 읽는 순서
 
-```bash
-git clone -b 07-implementation https://github.com/stdiodh/spring-boot-redis-cache-lab.git
-cd spring-boot-redis-cache-lab
-git checkout -b feat/<이름>
-```
+1. [이론 정리](./docs/theory.md)
+2. [구현 가이드](./docs/implementation.md)
+3. [체크리스트](./docs/checklist.md)
+4. [참고 구현 가이드](./docs/answer-guide.md)
+5. [제공 자료 안내](./docs/assets.md)
 
-참고 구현 비교가 필요할 때는 아래 흐름을 사용합니다.
-
-```bash
-git fetch origin
-git diff origin/07-implementation..origin/07-answer
-```
-
-## 문서 안내
-
-- [이론 문서](./docs/theory.md)
-- [구현 안내](./docs/implementation.md)
-- [참고 구현 가이드](./docs/answer-guide.md)
-- [체크리스트](./docs/checklist.md)
-- [제공 자료 안내](./docs/assets.md)
-
-## 파일을 어떻게 보면 좋나요
-
-1. `docs/theory.md`에서 왜 DB 앞에 캐시를 두는지와 왜 stale data가 생길 수 있는지 읽습니다.
-2. `docs/implementation.md`에서 오늘 손으로 칠 순서를 확인합니다.
-3. 아래 핵심 파일을 순서대로 엽니다.
-
-- `src/main/kotlin/com/andi/rest_crud/config/RedisConfig.kt`
-- `src/main/kotlin/com/andi/rest_crud/service/PostCacheService.kt`
-- `src/main/kotlin/com/andi/rest_crud/service/PostQueryService.kt`
-- `src/main/kotlin/com/andi/rest_crud/controller/PostController.kt`
-
-`07-implementation`에서는 TODO를 채우며 실습하고,
-완료 후에는 `07-answer`나 `docs/answer-guide.md`로 비교하면 됩니다.
-
-## 미리 제공되는 것
-
-- `06-answer` 기준 CRUD, Validation, JWT, OAuth2, SMTP 계정 복구 코드
-- Redis 의존성 설정
-- MySQL + Redis 실행용 `compose.yaml`
-- Redis host/port, TTL 설정 자리
-- `PostController`와 `PostService` 기본 조회 구조
-
-실습자는 캐시 조회와 저장의 핵심 흐름만 직접 구현합니다.
-실무 확장 개념으로는 `캐시 무효화 전략`을 문서에서 함께 이해합니다.
-
-## 실행 방법
-
-먼저 MySQL과 Redis를 준비합니다.
+## 실행 / 테스트 방법
 
 ```bash
 docker compose up -d
-```
-
-애플리케이션 실행:
-
-```bash
+./gradlew test
 ./gradlew bootRun
 ```
 
-Swagger UI:
+Swagger에서 게시글을 생성한 뒤 같은 단건 조회를 두 번 실행합니다.
 
 ```text
-http://localhost:8080/swagger
+GET /posts/{id}
 ```
 
-테스트 실행:
+## 완료 기준
 
-```bash
-./gradlew test
-```
+- 테스트가 통과합니다.
+- 첫 조회와 두 번째 조회의 hit/miss 차이를 설명합니다.
+- TTL이 자동 만료 장치이고 evict가 수정/삭제 직후 정리 장치라는 점을 설명합니다.
+- 캐시가 DB를 대체하지 않는다는 점을 설명합니다.
 
-## 이번 실습에서 직접 구현할 범위
+<details>
+<summary>멘토용 진행 포인트</summary>
 
-- Redis 연결용 `StringRedisTemplate` Bean 확인
-- `postId` 기준 캐시 조회
-- cache miss 시 DB 조회 연결
-- DB 조회 결과 캐시 저장
-- TTL 설정
-- 같은 조회를 두 번 호출하며 hit/miss 차이 확인
-- 왜 TTL만으로는 충분하지 않을 수 있는지 이해
+## 수업 전 확인
 
-이번 시퀀스에서는 pub/sub, stream, distributed lock, 세션 저장, 토큰 블랙리스트, 복잡한 캐시 무효화 전략까지 확장하지 않습니다.
+- MySQL과 Redis 실행 환경을 확인합니다.
+- answer 브랜치 코드는 starter 실습 후 비교 기준으로 사용합니다.
+
+## 수업 중 질문
+
+- miss가 왜 실패가 아닌 정상 흐름인지 질문합니다.
+- 같은 게시글을 두 번 조회했을 때 어떤 로그가 달라지는지 확인하게 합니다.
+- 수정 직후 캐시를 지우지 않으면 어떤 응답이 나갈 수 있는지 묻습니다.
+
+## 리뷰 기준
+
+- `PostCacheService`가 key, JSON 변환, TTL 책임을 모으는지 확인합니다.
+- `PostQueryService`가 cache-aside 흐름을 짧게 드러내는지 확인합니다.
+- stale data와 evict 필요성을 설명하는지 확인합니다.
+
+</details>
