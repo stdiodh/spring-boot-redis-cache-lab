@@ -18,3 +18,17 @@
 - [ ] cache-aside 흐름을 `PostQueryService` 한 파일로 보여줄 수 있는가
 - [ ] 이번 시퀀스가 고급 Redis 기능 학습이 아니라 조회 캐시 입문이라는 점이 분명한가
 - [ ] 수정 후 캐시를 안 지우면 어떤 값이 보일 수 있는지 설명할 준비가 되어 있는가
+
+## 남은 한계와 다음 시퀀스 연결
+
+이번 시퀀스는 Redis 조회 캐시 입문만 다룹니다.
+pub/sub, stream, distributed lock, 세션 저장, 토큰 블랙리스트는 다루지 않습니다.
+
+<details>
+<summary>멘토용 리뷰 기준</summary>
+
+- 통과 기준: 멘티가 cache hit, cache miss, TTL, stale data를 게시글 조회 흐름으로 설명합니다.
+- 보완 필요 기준: miss를 장애로 설명하거나 TTL이 최신성을 완전히 보장한다고 이해하면 cache-aside 흐름을 다시 짚습니다.
+- 질문 예시: "게시글 수정 직후 캐시를 지우지 않으면 어떤 응답이 나갈 수 있나요?"
+
+</details>

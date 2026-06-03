@@ -20,7 +20,6 @@ Redis 기반 cache-aside 패턴을 붙이는 단계입니다.
 
 - `main`: 이 레포의 주제, 문서, 브랜치 구조를 안내하는 대표 브랜치
 - `07-implementation`: 실습용 starter 브랜치
-- `07-answer`: 참고 구현 브랜치
 
 실습은 반드시 `07-implementation`에서 시작합니다.
 
@@ -30,18 +29,10 @@ cd spring-boot-redis-cache-lab
 git checkout -b feat/<이름>
 ```
 
-참고 구현 비교가 필요할 때는 아래 흐름을 사용합니다.
-
-```bash
-git fetch origin
-git diff origin/07-implementation..origin/07-answer
-```
-
 ## 문서 안내
 
 - [이론 문서](./docs/theory.md)
 - [구현 안내](./docs/implementation.md)
-- [참고 구현 가이드](./docs/answer-guide.md)
 - [체크리스트](./docs/checklist.md)
 - [제공 자료 안내](./docs/assets.md)
 
@@ -56,8 +47,29 @@ git diff origin/07-implementation..origin/07-answer
 - `src/main/kotlin/com/andi/rest_crud/service/PostQueryService.kt`
 - `src/main/kotlin/com/andi/rest_crud/controller/PostController.kt`
 
-`07-implementation`에서는 TODO를 채우며 실습하고,
-완료 후에는 `07-answer`나 `docs/answer-guide.md`로 비교하면 됩니다.
+`07-implementation`에서는 TODO를 채우며 실습하고, 완료 후에는 체크리스트로 hit/miss와 stale data 설명을 확인합니다.
+
+<details>
+<summary>멘토용 진행 포인트</summary>
+
+## 수업 전 확인
+
+- MySQL과 Redis가 `docker compose up -d`로 뜨는지 확인합니다.
+- 캐시를 붙이기 전 조회 흐름이 정상 동작하는지 먼저 확인합니다.
+
+## 수업 중 질문
+
+- cache miss가 왜 실패가 아닌 정상 흐름인지 질문합니다.
+- TTL과 evict가 해결하는 문제가 어떻게 다른지 비교하게 합니다.
+- 캐시를 붙였을 때 읽기 속도와 최신성 사이에 어떤 균형이 필요한지 묻습니다.
+
+## 리뷰 기준
+
+- `PostQueryService`에서 cache-aside 흐름을 설명할 수 있습니다.
+- `PostCacheService`가 key, JSON 변환, TTL 책임을 갖는지 확인합니다.
+- 수정 후 stale data 위험을 설명할 수 있습니다.
+
+</details>
 
 ## 미리 제공되는 것
 
