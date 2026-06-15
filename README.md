@@ -5,11 +5,11 @@
 
 ## 이 레포에서 배우는 것
 
+- 같은 게시글을 반복 조회할 때 DB를 계속 읽는 문제
 - Redis 기반 cache-aside 조회 캐시
-- DB와 캐시의 역할 차이
-- cache hit / miss 흐름
-- TTL과 캐시 만료 감각
-- stale data와 캐시 무효화 전략 입문
+- cache miss, cache hit, invalidation 흐름
+- TTL로 오래된 캐시를 제한하는 방식
+- 캐시가 영구 저장소가 아니라는 한계
 
 ## 시작 방법
 
