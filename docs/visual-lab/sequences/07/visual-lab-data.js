@@ -3,7 +3,7 @@ window.visualLabData = {
   "sequence": "07",
   "title": "Redis Cache",
   "subtitle": "Caching and Redis",
-  "goal": "Cache-aside 패턴에서 cache hit와 miss, DB fallback, TTL, invalidation 질문을 함께 이해합니다.",
+  "goal": "Cache-aside 패턴에서 cache hit와 miss, DB fallback, TTL, invalidation 판단 기준을 함께 이해합니다.",
   "problem": "자주 조회되는 데이터도 매번 DB에서만 읽으면 같은 요청이 같은 비용을 반복하게 됩니다.",
   "repo": {
     "name": "spring-boot-redis-cache-lab",
@@ -311,7 +311,7 @@ window.visualLabData = {
       "file": "src/main/kotlin/com/andi/rest_crud/service/PostQueryService.kt",
       "language": "kotlin",
       "snippet": "fun getPost(id: Long): PostResponse {\n    val cached = postCacheService.get(id)\n    if (cached != null) {\n        logger.info(\"cache hit for post {}\", id)\n        return cached\n    }\n\n    logger.info(\"cache miss for post {}\", id)\n    val response = postService.getById(id)\n    postCacheService.set(id, response)\n    return response\n}",
-      "explanation": "조회 흐름에서 cache hit와 miss의 갈림길을 코드로 확인합니다.",
+      "explanation": "이 파일은 `07-implementation` 브랜치 기준 경로입니다. 조회 흐름에서 cache hit와 miss의 갈림길을 코드로 확인합니다.",
       "check": "같은 id 조회가 두 번째부터 캐시를 타는지 로그로 확인합니다."
     },
     {
@@ -320,7 +320,7 @@ window.visualLabData = {
       "file": "src/main/kotlin/com/andi/rest_crud/service/PostCacheService.kt",
       "language": "kotlin",
       "snippet": "fun set(postId: Long, response: PostResponse) {\n    val value = objectMapper.writeValueAsString(response)\n    stringRedisTemplate.opsForValue().set(key(postId), value, ttl())\n}\n\nfun key(postId: Long): String = \"post:$postId\"\n\nfun ttl(): Duration = Duration.ofSeconds(postTtlSeconds)",
-      "explanation": "캐시는 DB를 대체하지 않고 조회 결과를 제한된 시간 동안 저장합니다.",
+      "explanation": "이 파일은 `07-implementation` 브랜치 기준 경로입니다. 캐시는 DB를 대체하지 않고 조회 결과를 제한된 시간 동안 저장합니다.",
       "check": "수정/삭제 후 오래된 캐시가 남지 않게 evict 흐름을 확인합니다."
     }
   ],
@@ -370,7 +370,7 @@ window.visualLabData = {
       "title": "Redis Cache",
       "topic": "Caching and Redis",
       "question": "같은 게시글을 반복 조회할 때 왜 매번 DB까지 가면 안 될까?",
-      "goal": "Cache-aside 패턴에서 cache hit와 miss, DB fallback, TTL, invalidation 질문을 함께 이해합니다.",
+      "goal": "Cache-aside 패턴에서 cache hit와 miss, DB fallback, TTL, invalidation 판단 기준을 함께 이해합니다.",
       "sourceDocs": [
         {
           "label": "레포 가이드",
@@ -734,7 +734,7 @@ window.visualLabData = {
           "file": "src/main/kotlin/com/andi/rest_crud/service/PostQueryService.kt",
           "language": "kotlin",
           "snippet": "fun getPost(id: Long): PostResponse {\n    val cached = postCacheService.get(id)\n    if (cached != null) {\n        logger.info(\"cache hit for post {}\", id)\n        return cached\n    }\n\n    logger.info(\"cache miss for post {}\", id)\n    val response = postService.getById(id)\n    postCacheService.set(id, response)\n    return response\n}",
-          "explanation": "조회 흐름에서 cache hit와 miss의 갈림길을 코드로 확인합니다.",
+          "explanation": "이 파일은 `07-implementation` 브랜치 기준 경로입니다. 조회 흐름에서 cache hit와 miss의 갈림길을 코드로 확인합니다.",
           "check": "같은 id 조회가 두 번째부터 캐시를 타는지 로그로 확인합니다."
         },
         {
@@ -743,7 +743,7 @@ window.visualLabData = {
           "file": "src/main/kotlin/com/andi/rest_crud/service/PostCacheService.kt",
           "language": "kotlin",
           "snippet": "fun set(postId: Long, response: PostResponse) {\n    val value = objectMapper.writeValueAsString(response)\n    stringRedisTemplate.opsForValue().set(key(postId), value, ttl())\n}\n\nfun key(postId: Long): String = \"post:$postId\"\n\nfun ttl(): Duration = Duration.ofSeconds(postTtlSeconds)",
-          "explanation": "캐시는 DB를 대체하지 않고 조회 결과를 제한된 시간 동안 저장합니다.",
+          "explanation": "이 파일은 `07-implementation` 브랜치 기준 경로입니다. 캐시는 DB를 대체하지 않고 조회 결과를 제한된 시간 동안 저장합니다.",
           "check": "수정/삭제 후 오래된 캐시가 남지 않게 evict 흐름을 확인합니다."
         }
       ],
