@@ -9,9 +9,9 @@ Redis 캐시는 자주 읽는 결과를 잠시 보관해 반복 조회 비용을
 
 1. `compose.yaml`로 Redis를 실행합니다.
 2. `RedisConfig.kt`에서 Redis 연결과 직렬화 기준을 맞춥니다.
-3. `PostCacheService.kt`에서 get, put, evict 책임을 분리합니다.
+3. `PostCacheService.kt`에서 get, put, key, TTL 책임을 분리합니다.
 4. `PostQueryService.kt`에서 cache miss와 cache hit를 나눕니다.
-5. `PostService.kt`에서 수정/삭제 뒤 cache invalidation을 연결합니다.
+5. 수정/삭제 뒤 cache invalidation은 stale data를 해결하는 후속 확장으로 설계합니다.
 
 위 파일 경로는 `07-implementation`, `07-answer` 브랜치 기준입니다.
 

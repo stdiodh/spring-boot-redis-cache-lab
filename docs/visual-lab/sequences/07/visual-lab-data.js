@@ -321,7 +321,7 @@ window.visualLabData = {
       "language": "kotlin",
       "snippet": "fun set(postId: Long, response: PostResponse) {\n    val value = objectMapper.writeValueAsString(response)\n    stringRedisTemplate.opsForValue().set(key(postId), value, ttl())\n}\n\nfun key(postId: Long): String = \"post:$postId\"\n\nfun ttl(): Duration = Duration.ofSeconds(postTtlSeconds)",
       "explanation": "이 파일은 `07-implementation` 브랜치 기준 경로입니다. 캐시는 DB를 대체하지 않고 조회 결과를 제한된 시간 동안 저장합니다.",
-      "check": "수정/삭제 후 오래된 캐시가 남지 않게 evict 흐름을 확인합니다."
+      "check": "현재 답안에는 evict가 없으므로 수정/삭제 후 stale data가 생길 수 있는 지점을 찾습니다."
     }
   ],
   "concepts": [
@@ -744,7 +744,7 @@ window.visualLabData = {
           "language": "kotlin",
           "snippet": "fun set(postId: Long, response: PostResponse) {\n    val value = objectMapper.writeValueAsString(response)\n    stringRedisTemplate.opsForValue().set(key(postId), value, ttl())\n}\n\nfun key(postId: Long): String = \"post:$postId\"\n\nfun ttl(): Duration = Duration.ofSeconds(postTtlSeconds)",
           "explanation": "이 파일은 `07-implementation` 브랜치 기준 경로입니다. 캐시는 DB를 대체하지 않고 조회 결과를 제한된 시간 동안 저장합니다.",
-          "check": "수정/삭제 후 오래된 캐시가 남지 않게 evict 흐름을 확인합니다."
+          "check": "현재 답안에는 evict가 없으므로 수정/삭제 후 stale data가 생길 수 있는 지점을 찾습니다."
         }
       ],
       "problem": "자주 조회되는 데이터도 매번 DB에서만 읽으면 같은 요청이 같은 비용을 반복하게 됩니다."

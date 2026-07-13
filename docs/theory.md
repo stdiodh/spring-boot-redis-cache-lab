@@ -5,7 +5,7 @@
 게시글 단건 조회처럼 자주 반복되는 요청은 매번 DB를 읽으면 비용이 쌓입니다.
 DB는 원본 데이터를 보관하는 곳이지만, 모든 조회를 항상 DB가 직접 처리해야 하는 것은 아닙니다.
 
-이번 시퀀스는 반복 조회 앞에 Redis 캐시를 두고, cache miss, cache hit, invalidation을 구분하는 문제를 다룹니다.
+이번 시퀀스는 반복 조회 앞에 Redis 캐시를 두고 cache miss, cache hit, TTL을 구현하며 invalidation은 후속 판단 기준으로 다룹니다.
 
 ## 2. 배경: 캐시는 원본 저장소가 아닙니다
 
@@ -36,9 +36,9 @@ GET /posts/{id}
 아래 경로는 `07-implementation`, `07-answer` 브랜치 기준 실제 코드 경로입니다.
 
 - `src/main/kotlin/com/andi/rest_crud/config/RedisConfig.kt`: Redis 연결과 serializer 기준을 둡니다.
-- `src/main/kotlin/com/andi/rest_crud/service/PostCacheService.kt`: cache get, put, evict 책임을 둡니다.
+- `src/main/kotlin/com/andi/rest_crud/service/PostCacheService.kt`: cache get, put, key, TTL 책임을 둡니다.
 - `src/main/kotlin/com/andi/rest_crud/service/PostQueryService.kt`: cache miss와 cache hit 흐름을 읽는 조회 서비스입니다.
-- `src/main/kotlin/com/andi/rest_crud/service/PostService.kt`: 게시글 수정/삭제 뒤 캐시 무효화를 연결합니다.
+- `src/main/kotlin/com/andi/rest_crud/service/PostService.kt`: 현재 답안에는 캐시 의존성이 없으며 수정/삭제 무효화는 확장 지점입니다.
 - `src/main/kotlin/com/andi/rest_crud/repository/PostRepository.kt`: cache miss 때 최종 원본 데이터를 읽는 DB Repository입니다.
 - `compose.yaml`: 로컬 Redis를 실행하는 서비스 정의입니다.
 
@@ -62,7 +62,7 @@ docker compose up -d
 ./gradlew test
 ```
 
-테스트에서는 cache miss 때 DB를 읽는지, cache hit 때 DB 조회를 줄이는지, 수정/삭제 뒤 캐시가 지워지는지 확인합니다.
+단위 테스트에서는 cache miss 때 DB를 읽는지, cache hit 때 DB 조회를 줄이는지 확인합니다. 수정/삭제 뒤 캐시 제거는 아직 테스트하지 않습니다.
 
 ## 6. 한계와 다음 개선 방향
 
