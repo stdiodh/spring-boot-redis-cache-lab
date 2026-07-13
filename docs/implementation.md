@@ -98,7 +98,7 @@ fun updatePost(id: Long, request: PostUpdateRequest): PostResponse {
 ### 왜 이 작업을 하는가
 
 DB가 바뀐 뒤 캐시를 그대로 두면 오래된 응답이 나갈 수 있습니다.
-아래 evict 연결은 현재 답안에 포함되지 않은 확장 예시입니다. 현재 코드는 TTL 전까지 stale data가 남을 수 있습니다.
+아래 evict 연결은 현재 답안에 포함되어 있습니다. DB 수정이 성공한 뒤 캐시를 제거해야 실패한 쓰기 때문에 정상 캐시가 먼저 사라지지 않습니다.
 
 ### 확인 방법
 
