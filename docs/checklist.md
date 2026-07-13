@@ -10,7 +10,7 @@
 ## 2. 코드 구조 확인
 
 - [ ] `RedisConfig`는 Redis 템플릿 연결을 담당합니다.
-- [ ] `PostCacheService`는 key, JSON 변환, TTL, evict 책임을 담당합니다.
+- [ ] `PostCacheService`는 key, JSON 변환, TTL 책임을 담당합니다.
 - [ ] `PostQueryService`는 cache-aside 흐름을 담당합니다.
 - [ ] 기존 `PostService`는 DB 기준 조회 책임을 유지합니다.
 
@@ -24,7 +24,7 @@
 
 - [ ] DB와 캐시의 차이
 - [ ] cache hit와 cache miss의 차이
-- [ ] TTL과 evict의 차이
+- [ ] TTL과 아직 구현하지 않은 evict의 차이
 - [ ] Cache-aside 흐름
 - [ ] 조회 속도와 최신성의 균형
 

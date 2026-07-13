@@ -83,7 +83,7 @@ hit는 빠른 응답, miss는 DB 조회로 이어지는 정상 흐름입니다.
 
 같은 `GET /posts/{id}` 요청을 두 번 호출해 로그 차이를 확인합니다.
 
-## 6. Step 4. Stale data와 evict
+## 6. Step 4. Stale data와 evict 확장
 
 ### 해야 할 일
 
@@ -98,7 +98,7 @@ fun updatePost(id: Long, request: PostUpdateRequest): PostResponse {
 ### 왜 이 작업을 하는가
 
 DB가 바뀐 뒤 캐시를 그대로 두면 오래된 응답이 나갈 수 있습니다.
-evict는 수정/삭제 직후 오래된 캐시를 명시적으로 치우는 가장 단순한 방식입니다.
+아래 evict 연결은 현재 답안에 포함되지 않은 확장 예시입니다. 현재 코드는 TTL 전까지 stale data가 남을 수 있습니다.
 
 ### 확인 방법
 
