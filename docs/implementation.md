@@ -14,7 +14,7 @@ starter 브랜치에서는 세부 구현보다 각 파일의 책임과 hit/miss 
 2. `PostCacheService`에서 캐시 key, 조회, 저장, TTL 흐름을 완성합니다.
 3. `PostQueryService`에서 hit/miss 분기를 연결합니다.
 4. 같은 게시글을 두 번 조회해 hit/miss 차이를 확인합니다.
-5. 수정 후 stale data가 생길 수 있는 이유를 설명합니다.
+5. 수정/삭제 성공 후 해당 key를 evict하는 흐름을 확인합니다.
 
 ## 3. Step 1. Redis 템플릿 확인
 

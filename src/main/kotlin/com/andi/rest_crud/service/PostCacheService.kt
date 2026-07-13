@@ -28,6 +28,10 @@ class PostCacheService(
         TODO("Redis 캐시 저장 흐름을 완성하세요.")
     }
 
+    fun evict(postId: Long) {
+        stringRedisTemplate.delete(key(postId))
+    }
+
     fun key(postId: Long): String = "post:$postId"
 
     fun ttl(): Duration = Duration.ofSeconds(postTtlSeconds)

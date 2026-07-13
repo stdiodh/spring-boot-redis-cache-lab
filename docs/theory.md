@@ -26,7 +26,7 @@
 | hit/miss 분기 | 캐시에 있으면 바로 응답하고 없으면 DB로 가는가 | `PostQueryService.getPost(...)` |
 | 저장 형식 | 응답 DTO를 Redis에 어떤 형태로 저장하는가 | `PostCacheService.get(...)`, `set(...)` |
 | TTL | 캐시가 영구 저장소처럼 남지 않는가 | `cache.post-ttl-seconds` |
-| stale data | 수정/삭제 직후 예전 값이 남을 수 있는가 | 확장 검토 지점 |
+| stale data | 수정/삭제 직후 예전 값이 남을 수 있는가 | 성공한 쓰기 뒤 evict |
 
 Redis는 빠른 저장소이지만 기준 데이터 저장소는 DB입니다. 그래서 이번 선택은 “DB 대신 Redis”가 아니라 “DB 앞에 Redis 조회 레이어를 둔다”입니다.
 
@@ -88,7 +88,7 @@ sequenceDiagram
     Controller->>Redis: cached value?
 ```
 
-현재 구현 범위는 조회 캐시의 hit/miss/TTL입니다. 수정/삭제 직후 오래된 값이 남을 수 있다는 점은 이번 theory에서 반드시 인식하고, 이후 evict 확장 기준으로 이어갑니다.
+현재 구현 범위는 조회 캐시의 hit/miss/TTL과 수정/삭제 성공 후 evict입니다. 캐시를 먼저 지우지 않고 DB 변경 성공 뒤 제거하는 순서를 함께 확인합니다.
 
 ## 4. 계층 / DTO / 메시지 흐름
 
@@ -169,7 +169,7 @@ flowchart TD
 남는 한계도 분명히 봅니다.
 
 - 현재 구현은 단건 조회 cache-aside에 집중합니다.
-- 수정/삭제 직후 evict는 stale data 대응을 위한 확장 검토 지점입니다.
+- 수정/삭제 직후 evict는 stale data 대응을 위해 기본 흐름에 포함합니다.
 - TTL은 자동 만료 장치이지 즉시 최신성 보장 장치가 아닙니다.
 
 ## 7. 실무 포인트
