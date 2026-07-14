@@ -14,7 +14,7 @@ Redis 기반 cache-aside 패턴을 붙이는 단계입니다.
 3. DB 조회 결과를 캐시에 저장합니다.
 4. 다음 조회에서 cache hit가 일어나는지 확인합니다.
 5. TTL로 캐시가 영구 저장소가 아니라는 점을 이해합니다.
-6. 수정 후 캐시를 지우지 않으면 왜 예전 값이 남을 수 있는지 이해합니다.
+6. 수정/삭제 성공 후 해당 캐시를 evict해 stale data를 줄입니다.
 
 ## 브랜치 사용 방법
 
@@ -34,7 +34,6 @@ git checkout -b feat/<이름>
 - [이론 문서](./docs/theory.md)
 - [구현 안내](./docs/implementation.md)
 - [체크리스트](./docs/checklist.md)
-- [제공 자료 안내](./docs/assets.md)
 
 ## 파일을 어떻게 보면 좋나요
 
@@ -80,7 +79,7 @@ git checkout -b feat/<이름>
 - `PostController`와 `PostService` 기본 조회 구조
 
 실습자는 캐시 조회와 저장의 핵심 흐름만 직접 구현합니다.
-실무 확장 개념으로는 `캐시 무효화 전략`을 문서에서 함께 이해합니다.
+제공된 쓰기 흐름의 evict를 확인하고, 더 복잡한 캐시 무효화 전략은 확장 개념으로 구분합니다.
 
 ## 실행 방법
 
