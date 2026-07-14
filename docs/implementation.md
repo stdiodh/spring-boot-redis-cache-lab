@@ -9,9 +9,9 @@ Redis 캐시는 자주 읽는 결과를 잠시 보관해 반복 조회 비용을
 
 1. `compose.yaml`로 Redis를 실행합니다.
 2. `RedisConfig.kt`에서 Redis 연결과 직렬화 기준을 맞춥니다.
-3. `PostCacheService.kt`에서 get, put, key, TTL 책임을 분리합니다.
+3. `PostCacheService.kt`에서 get, set, evict, key, TTL 책임을 분리합니다.
 4. `PostQueryService.kt`에서 cache miss와 cache hit를 나눕니다.
-5. 수정/삭제 뒤 cache invalidation은 stale data를 해결하는 후속 확장으로 설계합니다.
+5. 수정/삭제가 성공한 뒤 `postCacheService.evict(id)`로 stale data를 줄입니다.
 
 위 파일 경로는 `07-implementation`, `07-answer` 브랜치 기준입니다.
 
@@ -28,7 +28,17 @@ if (cachedPost != null) {
 ```
 
 이 코드는 cache hit 때 DB 조회를 건너뛰는 문제를 해결합니다.
-cache miss에서는 Repository로 원본을 읽고 `postCacheService.put(...)`으로 다음 조회를 준비합니다.
+cache miss에서는 Repository로 원본을 읽고 `postCacheService.set(...)`으로 다음 조회를 준비합니다.
+
+쓰기 흐름에서는 DB 변경이 성공한 뒤 캐시를 제거합니다.
+
+```kotlin
+val response = postService.update(id, request, principal.name)
+postCacheService.evict(id)
+return response
+```
+
+실패한 쓰기 때문에 정상 캐시를 먼저 지우지 않도록 호출 순서를 함께 확인합니다.
 
 ## 4. 실행/테스트
 
@@ -43,4 +53,4 @@ Swagger에서 같은 게시글을 두 번 조회하고, 수정/삭제 뒤 다시
 ## 5. 한계와 다음 개선 방향
 
 캐시는 원본 저장소가 아니므로 DB와 값이 어긋나지 않게 지우는 기준이 필요합니다.
-다음 개선은 TTL, key 설계, 장애 시 DB fallback 기준을 더 명확히 하는 것입니다.
+다음 개선은 key/직렬화 호환성, Redis 장애 시 DB fallback 기준을 더 명확히 하는 것입니다.

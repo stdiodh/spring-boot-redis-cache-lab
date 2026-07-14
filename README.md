@@ -7,7 +7,7 @@
 
 - 같은 게시글을 반복 조회할 때 DB를 계속 읽는 문제
 - Redis 기반 cache-aside 조회 캐시
-- cache miss, cache hit, TTL 흐름과 invalidation 필요성
+- cache miss, cache hit, TTL 흐름과 쓰기 성공 후 evict
 - TTL로 오래된 캐시를 제한하는 방식
 - 캐시가 영구 저장소가 아니라는 한계
 
@@ -50,8 +50,8 @@ http://localhost:8080/swagger
 
 - cache miss 시 DB를 조회하고 Redis에 저장하는지 확인합니다.
 - cache hit 시 캐시 값을 반환하는지 확인합니다.
-- 현재 답안은 cache hit/miss와 TTL 저장까지 확인합니다.
-- 데이터 수정 또는 삭제 후 invalidation은 후속 구현 범위입니다.
+- 현재 답안은 cache hit/miss, TTL 저장, 수정/삭제 성공 후 evict를 확인합니다.
+- `PostControllerCacheInvalidationTest`는 DB 쓰기 뒤 해당 key가 제거되는지 검증합니다.
 
 실패하면 먼저 볼 것:
 
@@ -60,8 +60,8 @@ http://localhost:8080/swagger
 
 완료 기준:
 
-- cache miss와 cache hit 단위 테스트가 통과합니다.
-- invalidation이 아직 구현되지 않았다는 한계를 설명할 수 있습니다.
+- cache miss, cache hit, 수정/삭제 후 evict 테스트가 통과합니다.
+- TTL과 즉시 evict가 해결하는 시점의 차이를 설명할 수 있습니다.
 
 ## 정답과 비교하는 방법
 
@@ -83,7 +83,7 @@ docs/visual-lab/index.html
 
 ## 문서 안내
 
-- [레포 가이드](./docs/repo-guide.md)
-- [브랜치 가이드](./docs/branch-guide.md)
-- [시퀀스 맵](./docs/sequence-map.md)
+- [이론 정리](./docs/theory.md)
+- [구현 안내](./docs/implementation.md)
+- [체크리스트](./docs/checklist.md)
 - [Visual Lab](./docs/visual-lab/index.html)

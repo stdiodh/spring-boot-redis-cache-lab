@@ -154,24 +154,24 @@ window.visualLabData = {
     },
     {
       "id": "stale-data",
-      "title": "수정/삭제 이후 stale data 검토",
-      "summary": "조회 캐시를 붙이면 쓰기 작업 이후 캐시를 언제 지울지 함께 판단해야 합니다.",
+      "title": "수정/삭제 성공 후 evict",
+      "summary": "DB 쓰기가 성공한 뒤 해당 게시글 key를 즉시 제거해 stale data 구간을 줄입니다.",
       "steps": [
         {
           "order": 1,
           "actor": "Client",
           "input": "PUT or DELETE /posts/{id}",
-          "owner": "PostService",
+          "owner": "PostController / PostService",
           "action": "DB 데이터를 수정하거나 삭제합니다.",
           "output": "Changed data",
-          "note": "DB는 바뀌었지만 캐시가 그대로 남을 수 있습니다.",
+          "note": "실패한 쓰기 때문에 정상 캐시를 먼저 지우지 않도록 DB 성공을 먼저 확인합니다.",
           "id": "stale-data-step-1",
           "from": "Client",
-          "to": "PostService",
+          "to": "PostController / PostService",
           "message": "DB 데이터를 수정하거나 삭제합니다.",
           "messageKind": "request",
           "problem": "PUT or DELETE /posts/{id}",
-          "concept": "PostService",
+          "concept": "PostController / PostService",
           "check": "Changed data",
           "codePointIds": [
             "cache-aside-query",
@@ -180,20 +180,20 @@ window.visualLabData = {
         },
         {
           "order": 2,
-          "actor": "PostService",
+          "actor": "PostController",
           "input": "Changed data",
-          "owner": "Cache policy",
-          "action": "해당 id의 캐시 삭제 또는 갱신 필요성을 판단합니다.",
-          "output": "Invalidate candidate",
-          "note": "캐시 무효화는 성능보다 일관성 질문에 가깝습니다.",
+          "owner": "PostCacheService",
+          "action": "postCacheService.evict(id)로 해당 key를 제거합니다.",
+          "output": "Evicted post:{id}",
+          "note": "TTL은 자동 만료이고 evict는 쓰기 직후 정리입니다.",
           "id": "stale-data-step-2",
-          "from": "PostService",
-          "to": "Cache policy",
-          "message": "해당 id의 캐시 삭제 또는 갱신 필요성을 판단합니다.",
+          "from": "PostController",
+          "to": "PostCacheService",
+          "message": "DB 쓰기 성공 후 해당 id의 캐시를 제거합니다.",
           "messageKind": "request",
           "problem": "Changed data",
-          "concept": "Cache policy",
-          "check": "Invalidate candidate",
+          "concept": "PostCacheService",
+          "check": "Evicted post:{id}",
           "codePointIds": [
             "redis-ttl",
             "cache-aside-query"
@@ -204,17 +204,17 @@ window.visualLabData = {
           "actor": "Client",
           "input": "GET after update/delete",
           "owner": "Cache Lookup",
-          "action": "남은 캐시가 오래된 응답을 내보내는지 확인합니다.",
-          "output": "Fresh or stale response",
-          "note": "stale data는 캐시를 붙인 뒤 반드시 리뷰해야 할 위험입니다.",
+          "action": "cache miss 뒤 DB에서 최신 응답을 다시 읽습니다.",
+          "output": "Fresh response",
+          "note": "수정/삭제 후 evict 호출은 자동 테스트로도 확인합니다.",
           "id": "stale-data-step-3",
           "from": "Client",
           "to": "Cache Lookup",
-          "message": "남은 캐시가 오래된 응답을 내보내는지 확인합니다.",
+          "message": "cache miss 뒤 최신 원본을 조회합니다.",
           "messageKind": "response",
           "problem": "GET after update/delete",
           "concept": "Cache Lookup",
-          "check": "Fresh or stale response",
+          "check": "Fresh response",
           "codePointIds": [
             "cache-aside-query",
             "redis-ttl"
@@ -351,16 +351,16 @@ window.visualLabData = {
   "mentorHints": [],
   "relatedDocs": [
     {
-      "label": "레포 가이드",
-      "href": "../../../repo-guide.md"
+      "label": "이론 정리",
+      "href": "../../../theory.md"
     },
     {
-      "label": "시퀀스 맵",
-      "href": "../../../sequence-map.md"
+      "label": "구현 안내",
+      "href": "../../../implementation.md"
     },
     {
-      "label": "브랜치 가이드",
-      "href": "../../../branch-guide.md"
+      "label": "체크리스트",
+      "href": "../../../checklist.md"
     }
   ],
   "relatedCode": [],
@@ -368,16 +368,16 @@ window.visualLabData = {
   "question": "같은 게시글을 반복 조회할 때 왜 매번 DB까지 가면 안 될까?",
   "sourceDocs": [
     {
-      "label": "레포 가이드",
-      "href": "../../../repo-guide.md"
+      "label": "이론 정리",
+      "href": "../../../theory.md"
     },
     {
-      "label": "시퀀스 맵",
-      "href": "../../../sequence-map.md"
+      "label": "구현 안내",
+      "href": "../../../implementation.md"
     },
     {
-      "label": "브랜치 가이드",
-      "href": "../../../branch-guide.md"
+      "label": "체크리스트",
+      "href": "../../../checklist.md"
     }
   ],
   "why": {

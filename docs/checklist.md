@@ -16,6 +16,7 @@
 
 ## 마무리 확인
 
-- [ ] hit/miss 테스트 이름을 읽고 invalidation은 아직 자동 검증되지 않음을 확인했습니다.
+- [ ] hit/miss 테스트와 `PostControllerCacheInvalidationTest`의 검증 범위를 확인했습니다.
+- [ ] TTL과 수정/삭제 직후 evict의 역할 차이를 설명할 수 있습니다.
 - [ ] `07-implementation..07-answer` diff를 비교했습니다.
 - [ ] Redis 캐시가 원본 저장소가 아니라는 한계를 설명할 수 있습니다.
