@@ -68,7 +68,7 @@ sequenceDiagram
 
 정답 구현은 hit일 때 `PostService`로 가지 않고 바로 반환합니다. miss일 때만 DB 조회로 넘어가고, 조회 결과를 같은 key 규칙으로 Redis에 저장합니다.
 
-### 3.2 stale data 검토 흐름
+### 3.2 쓰기 성공 후 evict 흐름
 
 ```mermaid
 sequenceDiagram
@@ -77,19 +77,21 @@ sequenceDiagram
     participant Controller as PostController
     participant Service as PostService
     participant DB as MySQL
+    participant Cache as PostCacheService
     participant Redis as Redis
 
-    Client->>Controller: GET /posts/{id}
-    Controller->>Redis: cache post:{id}
     Client->>Controller: PUT /posts/{id}
-    Controller->>Service: update(id)
+    Controller->>Service: update(id, request, currentUser)
     Service->>DB: update post row
-    Note over Redis: post:{id} 캐시가 TTL까지 남아 있을 수 있음
+    Service-->>Controller: updated response
+    Controller->>Cache: evict(id)
+    Cache->>Redis: DEL post:{id}
+    Controller-->>Client: updated response
     Client->>Controller: GET /posts/{id}
-    Controller->>Redis: cached old value?
+    Controller->>Redis: cache miss
 ```
 
-이 다이어그램은 현재 구현의 한계를 보여줍니다. TTL은 언젠가 만료되도록 돕지만, 수정 직후 오래된 값이 보이는 문제를 즉시 해결하지는 않습니다.
+정답 구현은 DB 수정이나 삭제가 성공한 뒤 `post:{id}`를 제거합니다. TTL은 자동 만료를 담당하고, evict는 쓰기 직후 오래된 값이 응답되는 구간을 줄입니다.
 
 ## 4. 계층 / DTO / 메시지 흐름
 
@@ -241,7 +243,7 @@ flowchart TD
 
 ## 9. 다음 구현으로 연결되는 지점
 
-`docs/answer-guide.md`를 볼 때는 Redis API보다 `PostQueryService`의 분기와 `PostCacheService`의 key/JSON/TTL 책임을 먼저 봅니다. 이후 Redis 캐시를 더 안전하게 만들려면 수정/삭제 시점의 evict, Redis 장애 fallback, 캐시 직렬화 호환성까지 검토할 수 있습니다.
+`docs/implementation.md`와 `docs/checklist.md`를 볼 때는 Redis API보다 `PostQueryService`의 분기와 `PostCacheService`의 key/JSON/TTL/evict 책임을 먼저 봅니다. 이후 Redis 캐시를 더 안전하게 만들려면 Redis 장애 fallback과 캐시 직렬화 호환성까지 검토할 수 있습니다.
 
 <details>
 <summary>멘토용 설명 포인트</summary>
