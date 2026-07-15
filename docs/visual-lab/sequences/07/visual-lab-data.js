@@ -2,474 +2,418 @@ window.visualLabData = {
   "kind": "sequence",
   "sequence": "07",
   "title": "Redis Cache",
-  "subtitle": "Caching and Redis",
-  "goal": "Cache-aside 패턴에서 cache hit와 miss, DB fallback, TTL, invalidation 판단 기준을 함께 이해합니다.",
-  "problem": "자주 조회되는 데이터도 매번 DB에서만 읽으면 같은 요청이 같은 비용을 반복하게 됩니다.",
+  "subtitle": "Cache state lifecycle",
+  "goal": "MySQL 원본과 Redis 파생 복사본을 구분하고, 입력 조건만 보고 다음 조회·무효화 경로를 예측합니다.",
+  "problem": "같은 게시글을 자주 읽을 때 매번 DB까지 내려가면 같은 원본 조회 비용을 반복합니다.",
   "repo": {
     "name": "spring-boot-redis-cache-lab",
     "path": "spring-boot-redis-cache-lab"
   },
-  "defaultSequence": "07",
+  "workbench": {
+    "kind": "cache",
+    "title": "Guided Cache State Story",
+    "instruction": "캐시의 초기 조건을 읽고 DB 조회, Redis 반환, TTL 만료, 쓰기 후 삭제 중 어느 경로가 이어질지 먼저 예측하세요.",
+    "story": {
+      "invariant": "MySQL은 원본을 보관하고 Redis는 조회 결과의 파생 복사본만 잠시 보관합니다.",
+      "scope": "이 화면은 문서에 정의된 목표 경로를 설명합니다. 단위 테스트의 mock 호출, 실제 Redis key·TTL, 애플리케이션 로그는 서로 다른 증거입니다. Redis 장애 fallback은 현재 구현 범위가 아닙니다."
+    },
+    "terms": [
+      {
+        "term": "원본 · source of truth",
+        "meaning": "수정과 삭제의 기준이 되는 MySQL 데이터입니다. Redis 값이 없어져도 원본 책임은 DB에 남습니다."
+      },
+      {
+        "term": "파생 복사본 · cache entry",
+        "meaning": "post:{id} key에 직렬화되어 저장되는 PostResponse 복사본입니다. 원본과 자동으로 동기화되지 않습니다."
+      },
+      {
+        "term": "TTL",
+        "meaning": "entry가 Redis에 남을 수 있는 시간입니다. 만료는 자동 새로고침이 아니며 다음 조회가 다시 채웁니다."
+      },
+      {
+        "term": "MISS와 장애",
+        "meaning": "MISS는 정상 응답으로 key가 없다는 뜻입니다. Redis 연결 오류는 별도 장애 정책이 필요한 다른 사건입니다."
+      }
+    ],
+    "visual": {
+      "src": "../../assets/diagrams/07-cache-state-cycle.svg",
+      "alt": "MySQL 원본과 Redis 파생 복사본 사이에서 EMPTY, WARM, EXPIRED, EVICTED, REFILL 상태가 바뀌는 캐시 수명주기. WARM에서는 DB를 건너뛰고, EXPIRED 또는 EVICTED 뒤 다음 조회는 MySQL을 읽어 Redis에 TTL과 함께 다시 저장한다.",
+      "caption": "캐시의 핵심은 속도 수치가 아니라 어떤 조건에서 원본을 읽고, 언제 파생 복사본을 버리며, 다음 요청이 무엇을 다시 채우는지 설명하는 것입니다."
+    },
+    "comparison": {
+      "label": "원본과 파생 복사본의 책임은 바뀌지 않습니다",
+      "left": {
+        "title": "MySQL · 원본",
+        "body": "게시글 수정·삭제의 기준입니다. cache miss 또는 만료 뒤 다시 읽는 데이터이며 Redis entry와 수명이 다릅니다."
+      },
+      "right": {
+        "title": "Redis · 파생 복사본",
+        "body": "반복 조회를 줄이기 위한 직렬화 응답입니다. TTL이 지나거나 쓰기 성공 뒤 evict되며 스스로 원본을 갱신하지 않습니다."
+      }
+    },
+    "nodes": {
+      "client": {
+        "label": "Client",
+        "icon": "client",
+        "kind": "HTTP client",
+        "role": "게시글 단건 조회 또는 수정 요청을 보냅니다.",
+        "boundary": "Client"
+      },
+      "postController": {
+        "label": "PostController",
+        "icon": "api",
+        "kind": "request handler",
+        "role": "HTTP 요청을 조회·쓰기 책임으로 전달합니다.",
+        "boundary": "Web",
+        "codePointIds": ["controller-write-boundary"]
+      },
+      "postQueryService": {
+        "label": "조회 정책",
+        "icon": "service",
+        "kind": "cache-aside policy",
+        "role": "캐시를 먼저 확인하고 값이 없을 때만 원본 조회를 선택합니다.",
+        "boundary": "Application"
+      },
+      "postCacheService": {
+        "label": "캐시 어댑터",
+        "icon": "cache",
+        "kind": "cache adapter",
+        "role": "post:{id} key, JSON 변환, TTL, get·set·evict 책임을 가집니다.",
+        "boundary": "Cache"
+      },
+      "redis": {
+        "label": "Redis",
+        "icon": "cache",
+        "kind": "derived store",
+        "role": "PostResponse의 직렬화 복사본을 TTL 동안 저장합니다.",
+        "boundary": "Derived data"
+      },
+      "postService": {
+        "label": "PostService",
+        "icon": "service",
+        "kind": "source service",
+        "role": "Repository를 통해 DB 원본 게시글을 읽고 수정합니다.",
+        "boundary": "Domain",
+        "codePointIds": ["source-read-boundary"]
+      },
+      "mysql": {
+        "label": "MySQL",
+        "icon": "database",
+        "kind": "persistent store",
+        "role": "게시글의 원본 row를 보관합니다.",
+        "boundary": "Source of truth"
+      }
+    },
+    "scenarios": [
+      {
+        "id": "key-absent",
+        "label": "post:1 key 없음",
+        "flowId": "lookup-flow",
+        "tone": "signal",
+        "prompt": "같은 id를 처음 조회하지만 Redis에는 post:1 entry가 없습니다.",
+        "observationTitle": "원본 조회 뒤 파생 복사본을 준비하는 경로",
+        "prediction": {
+          "prompt": "Redis가 정상 응답했지만 post:1 key가 없다면 다음 경로는 무엇일까요?",
+          "options": [
+            { "id": "source-refill", "label": "MySQL 원본을 읽고 post:1을 TTL과 함께 저장한다" },
+            { "id": "empty-response", "label": "빈 응답을 바로 반환하고 DB는 읽지 않는다" },
+            { "id": "outage-fallback", "label": "Redis 장애로 간주하고 장애 fallback을 실행한다" }
+          ],
+          "answer": "source-refill",
+          "explanation": "정상적인 key 부재는 cache miss입니다. 오류가 아니라 cache-aside의 원본 조회 분기입니다."
+        },
+        "diagram": {
+          "caption": "PostCacheService가 Redis의 key 부재를 조회 정책에 반환하면, 조회 정책은 PostService의 MySQL 결과를 받은 뒤 같은 캐시 어댑터를 통해 TTL과 함께 저장합니다.",
+          "lanes": [
+            {
+              "id": "absent-key-lookup",
+              "label": "Cache lookup → MISS return",
+              "description": "조회 정책이 Redis를 직접 호출하지 않고 PostCacheService를 왕복하는 네 전이입니다.",
+              "steps": [
+                { "from": "postQueryService", "to": "postCacheService", "verb": "캐시 먼저 조회", "payload": "get(1) · key post:1", "kind": "call", "concept": "Cache-aside" },
+                { "from": "postCacheService", "to": "redis", "verb": "key 조회", "payload": "GET post:1", "kind": "call", "check": "실제 실행에서는 Redis key와 애플리케이션 로그를 함께 확인합니다." },
+                { "from": "redis", "to": "postCacheService", "verb": "entry 없음", "payload": "null · 정상 key 부재", "kind": "response", "concept": "MISS는 장애가 아닙니다." },
+                { "from": "postCacheService", "to": "postQueryService", "verb": "MISS 반환", "payload": "null", "kind": "response", "concept": "원본 조회 분기를 선택합니다." }
+              ]
+            },
+            {
+              "id": "absent-key-source-refill",
+              "label": "Source read → adapter refill",
+              "description": "원본 응답이 Service와 조회 정책으로 돌아온 뒤 캐시 어댑터를 통해 저장되는 여섯 전이입니다.",
+              "steps": [
+                { "from": "postQueryService", "to": "postService", "verb": "원본 조회 선택", "payload": "getById(1)", "kind": "call", "codePointIds": ["source-read-boundary"] },
+                { "from": "postService", "to": "mysql", "verb": "원본 row 조회", "payload": "PostRepository.findById(1)", "kind": "call", "concept": "Source of truth" },
+                { "from": "mysql", "to": "postService", "verb": "원본 row 반환", "payload": "PostEntity", "kind": "response" },
+                { "from": "postService", "to": "postQueryService", "verb": "조회 결과 반환", "payload": "PostResponse", "kind": "response" },
+                { "from": "postQueryService", "to": "postCacheService", "verb": "파생 복사본 저장 요청", "payload": "set(1, PostResponse)", "kind": "call" },
+                { "from": "postCacheService", "to": "redis", "verb": "entry와 수명 저장", "payload": "SET post:1 · PostResponse JSON · TTL", "kind": "persist", "concept": "다음 동일 조회를 준비합니다.", "check": "단위 테스트는 cache set 호출, 수동 실행은 실제 key와 TTL을 각각 확인해야 합니다." }
+              ]
+            }
+          ]
+        },
+        "route": ["조회 정책", "캐시 어댑터", "Redis", "캐시 어댑터", "조회 정책", "PostService", "MySQL", "PostService", "조회 정책", "캐시 어댑터", "Redis"],
+        "snapshot": [
+          { "label": "초기 Redis 상태", "value": "post:1 없음", "tone": "warning" },
+          { "label": "원본 조회", "value": "MySQL까지 도달", "tone": "signal" },
+          { "label": "다음 상태", "value": "post:1 + TTL", "tone": "recovered" }
+        ],
+        "evidenceType": "문서 기반 목표 모델 · 테스트/Redis 수동 확인 분리",
+        "evidence": "구현 뒤에는 cache get이 null일 때 원본 Service가 호출되고 cache set이 요청되는지 단위 테스트로 확인합니다. 실제 Redis 저장과 TTL은 실행 중 key로 별도 확인합니다.",
+        "outcome": "MISS는 실패가 아니라 원본을 읽어 파생 복사본을 준비하는 정상 분기입니다.",
+        "reflection": {
+          "prompt": "MISS와 Redis 장애를 구분하는 인과 규칙을 한 문장으로 적어보세요.",
+          "transfer": "Redis 연결 자체가 실패한다면 현재 null 분기만으로 같은 동작을 보장할 수 있을까요? 현재 실습에는 장애 fallback 정책이 없습니다."
+        }
+      },
+      {
+        "id": "key-warm",
+        "label": "post:1 key 있음 · TTL 남음",
+        "flowId": "lookup-flow",
+        "tone": "recovered",
+        "prompt": "동일한 key가 Redis에 있고 TTL이 아직 남아 있습니다.",
+        "observationTitle": "Redis 복사본을 반환하고 원본 경계를 건너뛰는 경로",
+        "prediction": {
+          "prompt": "post:1 entry가 존재하고 TTL이 남았다면 MySQL 조회는 어떻게 될까요?",
+          "options": [
+            { "id": "cache-only", "label": "Redis 복사본을 반환하고 MySQL은 호출하지 않는다" },
+            { "id": "compare-both", "label": "Redis와 MySQL을 모두 읽어 값이 같은지 비교한다" },
+            { "id": "refresh-ttl", "label": "매 조회마다 MySQL을 읽고 TTL을 새로 시작한다" }
+          ],
+          "answer": "cache-only",
+          "explanation": "cache hit의 이점은 원본 조회를 생략하는 데 있습니다. TTL이 남았다는 사실이 원본과 자동 비교한다는 뜻은 아닙니다."
+        },
+        "diagram": {
+          "caption": "post:1 entry가 존재하면 Redis의 직렬화 응답을 반환하고 PostService와 MySQL 원본 조회에는 도달하지 않습니다.",
+          "lanes": [
+            {
+              "id": "warm-key-path",
+              "label": "Warm key → cached response",
+              "description": "캐시 어댑터의 조회와 반환 경계를 모두 거쳐 응답하는 여섯 전이입니다.",
+              "steps": [
+                { "from": "postQueryService", "to": "postCacheService", "verb": "같은 key 조회", "payload": "get(1) · post:1", "kind": "call" },
+                { "from": "postCacheService", "to": "redis", "verb": "entry 읽기", "payload": "GET post:1", "kind": "call" },
+                { "from": "redis", "to": "postCacheService", "verb": "직렬화 entry 반환", "payload": "PostResponse JSON", "kind": "response" },
+                { "from": "postCacheService", "to": "postQueryService", "verb": "복사본 반환", "payload": "PostResponse", "kind": "transform", "concept": "Cache hit" },
+                { "from": "postQueryService", "to": "postController", "verb": "조회 결과 반환", "payload": "PostResponse", "kind": "response" },
+                { "from": "postController", "to": "client", "verb": "캐시 응답", "payload": "200 · PostResponse", "kind": "response", "check": "단위 테스트는 원본 Service가 호출되지 않음을 확인할 수 있습니다. 실제 Redis 왕복은 별도 실행 증거입니다." }
+              ]
+            }
+          ],
+          "notReached": [
+            { "label": "PostService · MySQL", "reason": "entry가 존재하고 역직렬화에 성공했으므로 원본 조회 분기를 실행하지 않습니다." }
+          ]
+        },
+        "route": ["조회 정책", "캐시 어댑터", "Redis", "캐시 어댑터", "조회 정책", "PostController", "Client"],
+        "snapshot": [
+          { "label": "초기 Redis 상태", "value": "post:1 있음", "tone": "recovered" },
+          { "label": "반환 값", "value": "직렬화 복사본", "tone": "signal" },
+          { "label": "MySQL", "value": "도달하지 않음", "tone": "recovered" }
+        ],
+        "evidenceType": "단위 호출 검증과 live Redis 증거를 구분",
+        "evidence": "단위 테스트는 캐시 값이 있을 때 원본 Service를 호출하지 않는 정책을 확인할 수 있습니다. 실제 hit 로그와 JSON 역직렬화는 실행 환경에서 따로 확인합니다.",
+        "outcome": "같은 요청이라는 사실만으로 hit가 되지 않습니다. 같은 key가 존재하고 TTL이 남고 중간 evict가 없어야 합니다.",
+        "reflection": {
+          "prompt": "어떤 세 가지 조건이 유지되어야 DB를 건너뛸 수 있는지 적어보세요.",
+          "transfer": "DB가 바뀌었지만 entry를 지우지 않았다면 빠른 응답과 최신 응답 중 무엇을 얻게 될까요?"
+        }
+      },
+      {
+        "id": "ttl-elapsed",
+        "label": "post:1 TTL 경과",
+        "flowId": "lookup-flow",
+        "tone": "warning",
+        "prompt": "Redis에 저장했던 post:1의 TTL이 지난 뒤 다음 조회가 들어옵니다.",
+        "observationTitle": "만료 entry를 없는 값처럼 처리하고 다시 채우는 경로",
+        "prediction": {
+          "prompt": "TTL이 지나면 Redis가 원본을 자동으로 읽어 entry를 갱신할까요?",
+          "options": [
+            { "id": "request-refill", "label": "entry는 사라지고 다음 조회가 MySQL을 읽어 다시 채운다" },
+            { "id": "auto-refresh", "label": "Redis가 MySQL을 자동 조회해 같은 key를 갱신한다" },
+            { "id": "stale-forever", "label": "entry는 남고 오래된 값이 계속 반환된다" }
+          ],
+          "answer": "request-refill",
+          "explanation": "TTL은 entry 수명을 제한할 뿐 원본 조회를 실행하지 않습니다. 다음 cache-aside 요청이 refill을 수행합니다."
+        },
+        "diagram": {
+          "caption": "TTL이 지난 entry는 PostCacheService 왕복에서 값이 없는 것으로 반환되고, 다음 요청이 MySQL 원본 응답을 받은 뒤 같은 캐시 어댑터로 새 TTL을 저장합니다.",
+          "lanes": [
+            {
+              "id": "expired-key-lookup",
+              "label": "Expired lookup → MISS return",
+              "description": "만료 entry가 캐시 어댑터를 거쳐 조회 정책에 null로 돌아오는 네 전이입니다.",
+              "steps": [
+                { "from": "postQueryService", "to": "postCacheService", "verb": "만료 key 조회", "payload": "get(1) · post:1", "kind": "call" },
+                { "from": "postCacheService", "to": "redis", "verb": "entry 확인", "payload": "GET post:1 after TTL", "kind": "call" },
+                { "from": "redis", "to": "postCacheService", "verb": "만료 entry 없음", "payload": "null", "kind": "response", "concept": "TTL은 refresh가 아닙니다." },
+                { "from": "postCacheService", "to": "postQueryService", "verb": "MISS 반환", "payload": "null", "kind": "response" }
+              ]
+            },
+            {
+              "id": "expired-key-source-refill",
+              "label": "Source read → new TTL",
+              "description": "다음 요청이 원본 응답을 받은 뒤 캐시 어댑터를 통해 새 수명을 저장하는 여섯 전이입니다.",
+              "steps": [
+                { "from": "postQueryService", "to": "postService", "verb": "원본 다시 읽기", "payload": "getById(1)", "kind": "call", "codePointIds": ["source-read-boundary"] },
+                { "from": "postService", "to": "mysql", "verb": "원본 row 조회", "payload": "PostRepository.findById(1)", "kind": "call", "concept": "다음 요청이 원본을 읽습니다." },
+                { "from": "mysql", "to": "postService", "verb": "최신 원본 row 반환", "payload": "PostEntity", "kind": "response" },
+                { "from": "postService", "to": "postQueryService", "verb": "최신 조회 결과 반환", "payload": "PostResponse", "kind": "response" },
+                { "from": "postQueryService", "to": "postCacheService", "verb": "새 복사본 저장 요청", "payload": "set(1, PostResponse)", "kind": "call" },
+                { "from": "postCacheService", "to": "redis", "verb": "새 수명 시작", "payload": "SET post:1 · latest PostResponse · new TTL", "kind": "persist", "check": "실제 시간 경과와 TTL 재설정은 Redis에서 수동 확인해야 합니다." }
+              ]
+            }
+          ]
+        },
+        "route": ["조회 정책", "캐시 어댑터", "Redis", "캐시 어댑터", "조회 정책", "PostService", "MySQL", "PostService", "조회 정책", "캐시 어댑터", "Redis"],
+        "snapshot": [
+          { "label": "TTL", "value": "경과", "tone": "warning" },
+          { "label": "Redis 조회", "value": "값 없음", "tone": "warning" },
+          { "label": "Refill 주체", "value": "다음 애플리케이션 요청", "tone": "recovered" }
+        ],
+        "evidenceType": "수동 Redis TTL 관찰 필요",
+        "evidence": "현재 문서는 TTL 설정 책임을 정의하지만 실제 시간 경과와 만료 왕복은 Redis TTL·key 상태와 애플리케이션 로그를 수동으로 확인해야 합니다.",
+        "outcome": "TTL은 오래된 entry가 무기한 남는 것을 제한하지만 수정 직후 최신성을 보장하거나 자동으로 원본을 새로 읽지 않습니다.",
+        "reflection": {
+          "prompt": "TTL 만료와 refill의 실행 주체를 구분해 적어보세요.",
+          "transfer": "수정 직후 바로 최신 응답이 필요하다면 TTL 만료를 기다리는 것으로 충분할까요?"
+        }
+      },
+      {
+        "id": "write-succeeded",
+        "label": "DB 수정 성공 · 기존 key 있음",
+        "flowId": "write-flow",
+        "tone": "recovered",
+        "prompt": "post:1 entry가 남아 있는 상태에서 게시글 수정이 DB에서 성공했습니다.",
+        "observationTitle": "쓰기 성공을 확인한 뒤 파생 복사본을 삭제하는 경로",
+        "prediction": {
+          "prompt": "DB 수정이 성공한 직후 post:1 entry는 어떻게 처리해야 할까요?",
+          "options": [
+            { "id": "evict-after", "label": "성공한 쓰기 뒤 post:1을 삭제하고 다음 조회가 다시 채우게 한다" },
+            { "id": "wait-ttl", "label": "TTL이 끝날 때까지 기존 entry를 그대로 반환한다" },
+            { "id": "evict-before", "label": "DB 수정 결과와 관계없이 요청 진입 즉시 entry를 삭제한다" }
+          ],
+          "answer": "evict-after",
+          "explanation": "원본 변경이 성공한 뒤 파생 복사본을 제거해야 stale 응답 구간을 줄이고 실패한 쓰기가 정상 cache를 불필요하게 지우지 않습니다."
+        },
+        "diagram": {
+          "caption": "PostService의 원본 수정이 성공한 뒤에만 Controller가 cache evict를 요청하고 Redis에서 post:1을 삭제하는 목표 호출 순서입니다.",
+          "lanes": [
+            {
+              "id": "successful-write-path",
+              "label": "Source write success → evict",
+              "description": "원본 성공과 파생 복사본 삭제의 순서를 분리하는 일곱 전이입니다.",
+              "steps": [
+                { "from": "client", "to": "postController", "verb": "수정 요청", "payload": "PUT /posts/1 · PostUpdateRequest", "kind": "request", "codePointIds": ["controller-write-boundary"] },
+                { "from": "postController", "to": "postService", "verb": "원본 수정 위임", "payload": "update(1, request, user)", "kind": "call" },
+                { "from": "postService", "to": "mysql", "verb": "원본 row 변경", "payload": "PostRepository · transaction", "kind": "persist", "codePointIds": ["source-read-boundary"] },
+                { "from": "mysql", "to": "postService", "verb": "쓰기 성공", "payload": "updated PostEntity", "kind": "response", "concept": "성공 경계" },
+                { "from": "postService", "to": "postController", "verb": "수정 결과 반환", "payload": "PostResponse", "kind": "response" },
+                { "from": "postController", "to": "postCacheService", "verb": "파생본 제거 요청", "payload": "evict(1)", "kind": "call", "concept": "TTL을 기다리지 않는 invalidation" },
+                { "from": "postCacheService", "to": "redis", "verb": "key 삭제", "payload": "DEL post:1", "kind": "persist", "check": "구현 뒤 단위 테스트는 evict 호출을 확인하고 실제 key 삭제는 Redis에서 별도 확인합니다." }
+              ]
+            }
+          ]
+        },
+        "route": ["Client", "PostController", "PostService", "MySQL", "PostController", "캐시 어댑터", "Redis"],
+        "snapshot": [
+          { "label": "원본 쓰기", "value": "성공", "tone": "recovered" },
+          { "label": "기존 entry", "value": "post:1 삭제 대상", "tone": "signal" },
+          { "label": "다음 GET", "value": "MISS 뒤 최신 원본 refill", "tone": "recovered" }
+        ],
+        "evidenceType": "구현 문서의 목표 순서 · mock 호출과 live Redis 분리",
+        "evidence": "현재 canonical Controller와 Service는 원본 쓰기 책임 경계를 보여줍니다. 캐시 구현 뒤 단위 테스트가 확인하는 evict 호출과 실제 Redis DEL 성공은 같은 증거가 아닙니다.",
+        "outcome": "TTL은 최대 수명 제한이고 evict는 성공한 쓰기 직후 stale entry를 제거하는 별도 정책입니다.",
+        "reflection": {
+          "prompt": "쓰기 성공과 cache evict 사이의 순서를 조건문처럼 적어보세요.",
+          "transfer": "PostService가 예외를 던져 원본 쓰기가 실패했다면 evict까지 도달해야 할까요? 호출 순서상 도달하지 않아야 합니다."
+        }
+      }
+    ]
+  },
   "actors": [
-    {
-      "id": "client",
-      "label": "Client",
-      "kind": "client"
-    },
-    {
-      "id": "query",
-      "label": "PostQueryService",
-      "kind": "logic"
-    },
-    {
-      "id": "cache",
-      "label": "Redis Cache",
-      "kind": "cache"
-    },
-    {
-      "id": "service",
-      "label": "PostService",
-      "kind": "logic"
-    },
-    {
-      "id": "db",
-      "label": "DB",
-      "kind": "db"
-    }
+    { "id": "client", "label": "Client", "kind": "client" },
+    { "id": "query", "label": "조회 정책", "kind": "logic" },
+    { "id": "redis", "label": "Redis", "kind": "cache" },
+    { "id": "service", "label": "PostService", "kind": "logic" },
+    { "id": "mysql", "label": "MySQL", "kind": "db" }
   ],
   "flows": [
     {
       "id": "lookup-flow",
-      "title": "Cache-aside 단건 조회",
-      "summary": "조회 요청은 Redis를 먼저 확인하고, miss이면 DB 조회 후 결과를 캐시에 저장합니다.",
-      "mermaid": "sequenceDiagram\n  actor Client\n  participant Controller as PostController\n  participant Query as PostQueryService\n  participant Cache as PostCacheService\n  participant Redis as Redis\n  participant DB as Database\n  Client->>Controller: GET /posts/{id}\n  Controller->>Query: getPost(id)\n  Query->>Cache: get(id)\n  Cache->>Redis: cache lookup\n  alt hit\n    Redis-->>Cache: cached response\n    Cache-->>Query: cached response\n  else miss\n    Redis-->>Cache: empty\n    Query->>DB: findById(id)\n    DB-->>Query: post data\n    Query->>Cache: put(response, ttl)\n  end\n  Query-->>Controller: PostResponse\n  Controller-->>Client: JSON response",
+      "title": "조건에 따른 cache-aside 조회",
+      "summary": "key와 TTL 상태가 Redis 반환 또는 MySQL 원본 조회를 결정합니다.",
       "steps": [
-        {
-          "order": 1,
-          "actor": "Client",
-          "input": "GET /posts/{id}",
-          "owner": "PostController",
-          "action": "단건 조회 요청을 Query Service로 넘깁니다.",
-          "output": "id",
-          "note": "Controller는 캐시와 DB 선택을 직접 판단하지 않습니다.",
-          "id": "lookup-flow-step-1",
-          "from": "Client",
-          "to": "PostController",
-          "message": "단건 조회 요청을 Query Service로 넘깁니다.",
-          "messageKind": "request",
-          "problem": "GET /posts/{id}",
-          "concept": "PostController",
-          "check": "id",
-          "codePointIds": [
-            "cache-aside-query",
-            "redis-ttl"
-          ]
-        },
-        {
-          "order": 2,
-          "actor": "PostQueryService",
-          "input": "id",
-          "owner": "PostCacheService",
-          "action": "Redis key로 캐시를 먼저 조회합니다.",
-          "output": "hit or miss",
-          "note": "캐시는 DB 앞에 놓인 빠른 조회 후보입니다.",
-          "id": "lookup-flow-step-2",
-          "from": "PostQueryService",
-          "to": "PostCacheService",
-          "message": "Redis key로 캐시를 먼저 조회합니다.",
-          "messageKind": "request",
-          "problem": "id",
-          "concept": "PostCacheService",
-          "check": "hit or miss",
-          "codePointIds": [
-            "redis-ttl",
-            "cache-aside-query"
-          ]
-        },
-        {
-          "order": 3,
-          "actor": "PostCacheService",
-          "input": "cache hit",
-          "owner": "Redis",
-          "action": "캐시된 응답을 바로 돌려줍니다.",
-          "output": "Cached PostResponse",
-          "note": "hit이면 DB 조회 비용을 줄입니다.",
-          "id": "lookup-flow-step-3",
-          "from": "PostCacheService",
-          "to": "Redis",
-          "message": "캐시된 응답을 바로 돌려줍니다.",
-          "messageKind": "request",
-          "problem": "cache hit",
-          "concept": "Redis",
-          "check": "Cached PostResponse",
-          "codePointIds": [
-            "cache-aside-query",
-            "redis-ttl"
-          ]
-        },
-        {
-          "order": 4,
-          "actor": "PostCacheService",
-          "input": "cache miss",
-          "owner": "PostQueryService",
-          "action": "DB 조회로 fallback합니다.",
-          "output": "DB lookup",
-          "note": "miss는 오류가 아니라 정상적인 첫 조회 또는 TTL 만료 흐름입니다.",
-          "id": "lookup-flow-step-4",
-          "from": "PostCacheService",
-          "to": "PostQueryService",
-          "message": "DB 조회로 fallback합니다.",
-          "messageKind": "request",
-          "problem": "cache miss",
-          "concept": "PostQueryService",
-          "check": "DB lookup",
-          "codePointIds": [
-            "redis-ttl",
-            "cache-aside-query"
-          ]
-        },
-        {
-          "order": 5,
-          "actor": "PostQueryService",
-          "input": "DB result",
-          "owner": "PostCacheService",
-          "action": "응답을 TTL과 함께 캐시에 저장합니다.",
-          "output": "Cache write",
-          "note": "다음 같은 요청이 hit로 바뀔 수 있습니다.",
-          "id": "lookup-flow-step-5",
-          "from": "PostQueryService",
-          "to": "PostCacheService",
-          "message": "응답을 TTL과 함께 캐시에 저장합니다.",
-          "messageKind": "response",
-          "problem": "DB result",
-          "concept": "PostCacheService",
-          "check": "Cache write",
-          "codePointIds": [
-            "cache-aside-query",
-            "redis-ttl"
-          ]
-        }
-      ],
-      "bandKind": "scenario"
+        { "id": "lookup-1", "from": "Client", "to": "조회 정책", "problem": "같은 id 조회가 들어옵니다.", "concept": "입력 조건", "action": "post:{id} key를 만듭니다.", "check": "조회·저장·삭제에서 같은 key 규칙을 쓰는지 확인합니다.", "codePointIds": ["controller-write-boundary"] },
+        { "id": "lookup-2", "from": "조회 정책", "to": "Redis", "problem": "원본보다 먼저 파생 복사본을 확인합니다.", "concept": "Cache-aside", "action": "Redis get을 호출합니다.", "check": "HIT 또는 정상 MISS를 구분합니다." },
+        { "id": "lookup-3", "from": "Redis", "to": "조회 정책", "problem": "entry 유무와 TTL이 경로를 나눕니다.", "concept": "HIT / MISS", "action": "값이 있으면 반환하고 없으면 원본을 선택합니다.", "check": "MISS와 Redis 오류를 같은 사건으로 보지 않습니다." },
+        { "id": "lookup-4", "from": "조회 정책", "to": "PostService", "problem": "MISS이면 원본이 필요합니다.", "concept": "Source of truth", "action": "PostService.getById를 호출합니다.", "check": "Repository가 MySQL row를 읽는지 확인합니다.", "codePointIds": ["source-read-boundary"] },
+        { "id": "lookup-5", "from": "조회 정책", "to": "Redis", "problem": "다음 같은 조회를 준비합니다.", "concept": "TTL", "action": "PostResponse 복사본을 TTL과 함께 저장합니다.", "check": "단위 호출과 실제 Redis key·TTL을 분리해 확인합니다." }
+      ]
     },
     {
-      "id": "stale-data",
-      "title": "수정/삭제 성공 후 evict",
-      "summary": "DB 쓰기가 성공한 뒤 해당 게시글 key를 즉시 제거해 stale data 구간을 줄입니다.",
+      "id": "write-flow",
+      "title": "원본 쓰기 뒤 cache invalidation",
+      "summary": "수정·삭제가 성공한 뒤 관련 key를 제거해 다음 조회가 최신 원본을 다시 읽게 합니다.",
       "steps": [
-        {
-          "order": 1,
-          "actor": "Client",
-          "input": "PUT or DELETE /posts/{id}",
-          "owner": "PostController / PostService",
-          "action": "DB 데이터를 수정하거나 삭제합니다.",
-          "output": "Changed data",
-          "note": "실패한 쓰기 때문에 정상 캐시를 먼저 지우지 않도록 DB 성공을 먼저 확인합니다.",
-          "id": "stale-data-step-1",
-          "from": "Client",
-          "to": "PostController / PostService",
-          "message": "DB 데이터를 수정하거나 삭제합니다.",
-          "messageKind": "request",
-          "problem": "PUT or DELETE /posts/{id}",
-          "concept": "PostController / PostService",
-          "check": "Changed data",
-          "codePointIds": [
-            "cache-aside-query",
-            "redis-ttl"
-          ]
-        },
-        {
-          "order": 2,
-          "actor": "PostController",
-          "input": "Changed data",
-          "owner": "PostCacheService",
-          "action": "postCacheService.evict(id)로 해당 key를 제거합니다.",
-          "output": "Evicted post:{id}",
-          "note": "TTL은 자동 만료이고 evict는 쓰기 직후 정리입니다.",
-          "id": "stale-data-step-2",
-          "from": "PostController",
-          "to": "PostCacheService",
-          "message": "DB 쓰기 성공 후 해당 id의 캐시를 제거합니다.",
-          "messageKind": "request",
-          "problem": "Changed data",
-          "concept": "PostCacheService",
-          "check": "Evicted post:{id}",
-          "codePointIds": [
-            "redis-ttl",
-            "cache-aside-query"
-          ]
-        },
-        {
-          "order": 3,
-          "actor": "Client",
-          "input": "GET after update/delete",
-          "owner": "Cache Lookup",
-          "action": "cache miss 뒤 DB에서 최신 응답을 다시 읽습니다.",
-          "output": "Fresh response",
-          "note": "수정/삭제 후 evict 호출은 자동 테스트로도 확인합니다.",
-          "id": "stale-data-step-3",
-          "from": "Client",
-          "to": "Cache Lookup",
-          "message": "cache miss 뒤 최신 원본을 조회합니다.",
-          "messageKind": "response",
-          "problem": "GET after update/delete",
-          "concept": "Cache Lookup",
-          "check": "Fresh response",
-          "codePointIds": [
-            "cache-aside-query",
-            "redis-ttl"
-          ]
-        },
-        {
-          "id": "stale-data-check-4",
-          "order": 4,
-          "actor": "Cache Lookup",
-          "owner": "확인 지점",
-          "from": "Cache Lookup",
-          "to": "확인 지점",
-          "message": "결과와 실패 지점을 확인합니다.",
-          "messageKind": "response",
-          "problem": "구현 후 실제로 어느 지점이 통과했는지 확인해야 합니다.",
-          "concept": "Verification",
-          "action": "문서의 확인 명령이나 화면에서 결과를 검증합니다.",
-          "check": "성공 흐름과 실패 흐름을 말로 설명합니다.",
-          "note": "Visual Lab은 코드를 대신 완성하지 않고 확인 지점을 고정합니다.",
-          "codePointIds": [
-            "redis-ttl"
-          ]
-        }
-      ],
-      "bandKind": "scenario"
-    }
-  ],
-  "flow": [
-    {
-      "id": "lookup-flow-step-1",
-      "label": "PostController",
-      "problem": "GET /posts/{id}",
-      "concept": "PostController",
-      "action": "단건 조회 요청을 Query Service로 넘깁니다.",
-      "check": "id",
-      "codePointIds": [
-        "cache-aside-query",
-        "redis-ttl"
-      ]
-    },
-    {
-      "id": "lookup-flow-step-2",
-      "label": "PostCacheService",
-      "problem": "id",
-      "concept": "PostCacheService",
-      "action": "Redis key로 캐시를 먼저 조회합니다.",
-      "check": "hit or miss",
-      "codePointIds": [
-        "redis-ttl",
-        "cache-aside-query"
-      ]
-    },
-    {
-      "id": "lookup-flow-step-3",
-      "label": "Redis",
-      "problem": "cache hit",
-      "concept": "Redis",
-      "action": "캐시된 응답을 바로 돌려줍니다.",
-      "check": "Cached PostResponse",
-      "codePointIds": [
-        "cache-aside-query",
-        "redis-ttl"
-      ]
-    },
-    {
-      "id": "lookup-flow-step-4",
-      "label": "PostQueryService",
-      "problem": "cache miss",
-      "concept": "PostQueryService",
-      "action": "DB 조회로 fallback합니다.",
-      "check": "DB lookup",
-      "codePointIds": [
-        "redis-ttl",
-        "cache-aside-query"
-      ]
-    },
-    {
-      "id": "lookup-flow-step-5",
-      "label": "PostCacheService",
-      "problem": "DB result",
-      "concept": "PostCacheService",
-      "action": "응답을 TTL과 함께 캐시에 저장합니다.",
-      "check": "Cache write",
-      "codePointIds": [
-        "cache-aside-query",
-        "redis-ttl"
+        { "id": "write-1", "from": "Client", "to": "PostController", "problem": "원본 변경 요청이 들어옵니다.", "concept": "HTTP write boundary", "action": "수정·삭제를 Service에 위임합니다.", "check": "요청 진입 시점에는 아직 원본 성공이 아닙니다.", "codePointIds": ["controller-write-boundary"] },
+        { "id": "write-2", "from": "PostController", "to": "PostService", "problem": "권한과 원본 변경이 먼저 성공해야 합니다.", "concept": "Source write", "action": "DB transaction을 실행합니다.", "check": "실패 시 이후 단계가 실행되지 않는지 봅니다.", "codePointIds": ["source-read-boundary"] },
+        { "id": "write-3", "from": "PostService", "to": "PostController", "problem": "성공한 결과가 돌아옵니다.", "concept": "Success boundary", "action": "PostResponse 또는 정상 종료를 반환합니다.", "check": "성공과 예외를 구분합니다." },
+        { "id": "write-4", "from": "PostController", "to": "Redis", "problem": "기존 파생본은 stale할 수 있습니다.", "concept": "Eviction", "action": "관련 post:{id}를 삭제합니다.", "check": "mock evict 호출과 실제 Redis DEL을 따로 확인합니다." },
+        { "id": "write-5", "from": "Client", "to": "조회 정책", "problem": "다음 조회에는 entry가 없습니다.", "concept": "Refill", "action": "MISS 뒤 최신 원본을 읽어 다시 채웁니다.", "check": "TTL을 기다리지 않고 최신 원본 경로로 전환되는지 설명합니다." }
       ]
     }
   ],
   "codePoints": [
     {
-      "id": "cache-aside-query",
-      "title": "cache-aside는 캐시를 먼저 보고 없으면 DB로 내려갑니다",
-      "file": "src/main/kotlin/com/andi/rest_crud/service/PostQueryService.kt",
+      "id": "source-read-boundary",
+      "title": "PostService가 MySQL 원본 조회 책임을 가집니다",
+      "file": "src/main/kotlin/com/andi/rest_crud/service/PostService.kt",
       "language": "kotlin",
-      "snippet": "fun getPost(id: Long): PostResponse {\n    val cached = postCacheService.get(id)\n    if (cached != null) {\n        logger.info(\"cache hit for post {}\", id)\n        return cached\n    }\n\n    logger.info(\"cache miss for post {}\", id)\n    val response = postService.getById(id)\n    postCacheService.set(id, response)\n    return response\n}",
-      "explanation": "이 파일은 `07-implementation` 브랜치 기준 경로입니다. 조회 흐름에서 cache hit와 miss의 갈림길을 코드로 확인합니다.",
-      "check": "같은 id 조회가 두 번째부터 캐시를 타는지 로그로 확인합니다."
+      "snippet": "fun getById(id: Long): PostResponse {\n    return PostResponse.from(findPostById(id))\n}\n\nprivate fun findPostById(id: Long): PostEntity {\n    return postRepository.findById(id)\n        .orElseThrow { PostNotFoundException(id) }\n}",
+      "explanation": "현재 canonical 코드에서 PostService는 Repository를 통해 DB 원본을 읽습니다. 이 코드만으로 Redis hit·miss나 live Redis 성공을 증명하지는 않습니다.",
+      "check": "cache miss 목표 흐름이 이 원본 조회 경계로 이어지는지 확인합니다."
     },
     {
-      "id": "redis-ttl",
-      "title": "Redis 저장은 key와 TTL을 함께 봅니다",
-      "file": "src/main/kotlin/com/andi/rest_crud/service/PostCacheService.kt",
+      "id": "controller-write-boundary",
+      "title": "Controller는 원본 쓰기의 성공 결과를 받은 뒤 다음 책임을 이어갑니다",
+      "file": "src/main/kotlin/com/andi/rest_crud/controller/PostController.kt",
       "language": "kotlin",
-      "snippet": "fun set(postId: Long, response: PostResponse) {\n    val value = objectMapper.writeValueAsString(response)\n    stringRedisTemplate.opsForValue().set(key(postId), value, ttl())\n}\n\nfun evict(postId: Long) {\n    stringRedisTemplate.delete(key(postId))\n}",
-      "explanation": "이 파일은 `07-implementation` 브랜치 기준 경로입니다. 캐시는 DB를 대체하지 않고 조회 결과를 제한된 시간 동안 저장합니다.",
-      "check": "수정/삭제가 성공한 뒤 해당 게시글 key를 evict하는지 확인합니다."
+      "snippet": "@PutMapping(\"/{id}\")\nfun update(\n    @PathVariable id: Long,\n    @Valid @RequestBody request: PostUpdateRequest,\n    principal: Principal\n): PostResponse {\n    return postService.update(id, request, principal.name)\n}",
+      "explanation": "현재 canonical 코드는 원본 쓰기 책임 경계를 보여줍니다. 캐시 무효화는 이 성공 경계 뒤에 연결할 실습 목표이며, 이 snippet 자체는 evict를 증명하지 않습니다.",
+      "check": "실패한 Service 호출 뒤에는 cache 정리 단계로 진행하지 않는 호출 순서를 설계합니다."
     }
   ],
   "concepts": [
-    {
-      "title": "Cache-aside",
-      "body": "애플리케이션이 캐시를 먼저 보고 없으면 DB를 조회한 뒤 캐시에 채웁니다."
-    },
-    {
-      "title": "Cache hit",
-      "body": "캐시에 데이터가 있어 DB를 건너뛰는 조회 흐름입니다."
-    },
-    {
-      "title": "Cache miss",
-      "body": "캐시에 데이터가 없어 DB로 fallback하는 정상 흐름입니다."
-    },
-    {
-      "title": "TTL",
-      "body": "캐시 데이터가 일정 시간이 지나면 자연스럽게 만료되도록 하는 기준입니다."
-    }
-  ],
-  "practice": [
-    "첫 조회와 두 번째 조회가 각각 miss/hit로 나뉘는 이유를 설명할 수 있나요?",
-    "cache-aside에서 DB fallback이 언제 일어나는지 말할 수 있나요?",
-    "TTL과 캐시 무효화가 필요한 이유를 설명할 수 있나요?",
-    "게시글 수정 직후 캐시를 지우지 않으면 어떤 응답이 나갈 수 있나요?"
-  ],
-  "mentorHints": [],
-  "relatedDocs": [
-    {
-      "label": "이론 정리",
-      "href": "../../../theory.md"
-    },
-    {
-      "label": "구현 안내",
-      "href": "../../../implementation.md"
-    },
-    {
-      "label": "체크리스트",
-      "href": "../../../checklist.md"
-    }
-  ],
-  "relatedCode": [],
-  "topic": "Caching and Redis",
-  "question": "같은 게시글을 반복 조회할 때 왜 매번 DB까지 가면 안 될까?",
-  "sourceDocs": [
-    {
-      "label": "이론 정리",
-      "href": "../../../theory.md"
-    },
-    {
-      "label": "구현 안내",
-      "href": "../../../implementation.md"
-    },
-    {
-      "label": "체크리스트",
-      "href": "../../../checklist.md"
-    }
-  ],
-  "why": {
-    "problem": "자주 조회되는 데이터도 매번 DB에서만 읽으면 같은 요청이 같은 비용을 반복하게 됩니다.",
-    "limits": [
-      "캐시를 붙여도 언제 DB를 읽고 언제 캐시를 쓰는지 모르면 장애 원인을 찾기 어렵습니다.",
-      "miss를 오류로 보면 첫 조회와 TTL 만료 후 조회를 잘못 해석합니다.",
-      "수정/삭제 후 캐시를 정리하지 않으면 오래된 응답이 나갈 수 있습니다."
-    ],
-    "choice": "게시글 단건 조회 앞에 cache-aside 흐름을 붙여 캐시 조회, DB fallback, 캐시 저장 책임을 분리합니다."
-  },
-  "overview": [
-    "Request",
-    "PostQueryService",
-    "Cache Lookup",
-    "Hit or Miss",
-    "DB Fallback",
-    "Cache Write",
-    "Response"
+    { "title": "Cache-aside", "body": "애플리케이션이 entry를 먼저 보고 없을 때 원본을 읽어 캐시에 채우는 정책입니다." },
+    { "title": "Stale data", "body": "MySQL 원본은 바뀌었지만 Redis에 이전 응답 복사본이 남은 상태입니다." }
   ],
   "responsibilities": [
-    {
-      "name": "PostController",
-      "role": "조회 요청의 HTTP 경계를 담당합니다.",
-      "caution": "캐시 hit/miss 판단을 직접 맡지 않습니다."
-    },
-    {
-      "name": "PostQueryService",
-      "role": "캐시 조회와 DB fallback 흐름을 조립합니다.",
-      "caution": "캐시 저장 세부 구현을 직접 흩뿌리지 않습니다."
-    },
-    {
-      "name": "PostCacheService",
-      "role": "Redis key, JSON 변환, TTL을 모읍니다.",
-      "caution": "비즈니스 조회 정책까지 모두 떠안지 않습니다."
-    },
-    {
-      "name": "Redis",
-      "role": "빠른 key-value 조회와 TTL 기반 만료를 제공합니다.",
-      "caution": "DB의 영속 저장 책임을 대체하지 않습니다."
-    }
+    { "name": "조회 정책", "role": "Redis 결과를 해석해 원본 조회 여부를 결정합니다.", "caution": "MISS와 Redis 장애를 같은 분기로 단정하지 않습니다." },
+    { "name": "PostService", "role": "Repository를 통해 MySQL 원본을 읽고 변경합니다.", "caution": "Redis 파생본을 원본으로 취급하지 않습니다." }
   ],
   "glossary": [
-    {
-      "term": "Cache",
-      "meaning": "자주 읽는 데이터를 빠르게 찾기 위한 임시 저장소입니다.",
-      "caution": "영구 저장소가 아니며 DB와 역할이 다릅니다."
-    },
-    {
-      "term": "Redis",
-      "meaning": "메모리 기반 key-value 저장소로 캐시에 자주 사용됩니다.",
-      "caution": "빠르지만 데이터 일관성 정책을 함께 설계해야 합니다."
-    },
-    {
-      "term": "Cache-aside",
-      "meaning": "캐시 조회 후 miss이면 DB 조회와 캐시 저장을 애플리케이션이 처리하는 패턴입니다.",
-      "caution": "캐시와 DB의 역할을 동시에 이해해야 합니다."
-    },
-    {
-      "term": "Hit / Miss",
-      "meaning": "hit는 캐시에 있음, miss는 캐시에 없어 DB로 내려감을 뜻합니다.",
-      "caution": "miss는 실패가 아닙니다."
-    },
-    {
-      "term": "Stale data",
-      "meaning": "DB는 바뀌었지만 캐시에 남아 있는 오래된 데이터입니다.",
-      "caution": "수정/삭제 이후 캐시 정책을 확인해야 합니다."
-    }
+    { "term": "HIT", "meaning": "요청한 key의 entry가 있어 파생 복사본을 반환할 수 있는 상태입니다.", "caution": "같은 요청이라는 사실만으로 HIT가 되지 않습니다." },
+    { "term": "MISS", "meaning": "정상 조회 결과로 entry가 없음을 확인한 상태입니다.", "caution": "Redis 연결 오류와 다릅니다." },
+    { "term": "Evict", "meaning": "원본 변경 뒤 관련 entry를 명시적으로 삭제하는 동작입니다.", "caution": "TTL 만료와 시점·주체가 다릅니다." }
   ],
   "practical": [
-    {
-      "title": "miss는 정상 흐름입니다",
-      "body": "첫 조회나 TTL 만료 후 miss가 발생하고, 이때 DB fallback이 이어져야 합니다."
-    },
-    {
-      "title": "캐시는 성능만의 문제가 아닙니다",
-      "body": "수정/삭제 이후 오래된 응답을 막는 일관성 정책이 함께 필요합니다."
-    },
-    {
-      "title": "Redis 장애를 DB 장애처럼 보지 않습니다",
-      "body": "캐시 장애와 DB 장애는 fallback 가능성과 사용자 영향이 다릅니다."
-    }
+    { "title": "증거 범위를 나눕니다", "body": "mock 호출은 정책의 호출 관계를, live Redis key와 TTL은 실제 저장소 상태를 각각 확인합니다." },
+    { "title": "장애 fallback은 다음 설계입니다", "body": "현재 cache miss 경로만으로 Redis 연결 오류까지 DB로 우회한다고 주장하지 않습니다." }
   ],
   "checks": [
-    "첫 조회와 두 번째 조회가 각각 miss/hit로 나뉘는 이유를 설명할 수 있나요?",
-    "cache-aside에서 DB fallback이 언제 일어나는지 말할 수 있나요?",
-    "TTL과 캐시 무효화가 필요한 이유를 설명할 수 있나요?",
-    "게시글 수정 직후 캐시를 지우지 않으면 어떤 응답이 나갈 수 있나요?"
+    "MySQL 원본과 Redis 파생 복사본의 책임 차이를 설명할 수 있나요?",
+    "TTL 만료가 자동 refresh가 아닌 이유를 설명할 수 있나요?",
+    "정상 MISS와 Redis 장애가 다른 사건인 이유를 설명할 수 있나요?",
+    "쓰기 성공 뒤 evict해야 하는 순서와 실패 시 도달하지 않아야 할 경로를 설명할 수 있나요?"
   ],
+  "source": {
+    "theory": "../../../theory.md",
+    "implementation": "../../../implementation.md",
+    "checklist": "../../../checklist.md"
+  },
+  "question": "Redis entry의 상태만 보고 다음 요청이 MySQL까지 갈지 예측할 수 있을까?",
   "next": {
     "id": "08",
     "title": "Realtime WebSocket",
-    "reason": "캐시로 읽기 흐름을 최적화했다면, 다음에는 HTTP 요청/응답을 넘어 서버가 연결된 클라이언트에게 다시 메시지를 보내는 실시간 흐름을 봅니다."
+    "reason": "파생 복사본의 수명주기를 추적했다면, 다음에는 유지된 연결 위에서 어떤 session이 실제 메시지 수신자가 되는지 추적합니다."
   }
 };
