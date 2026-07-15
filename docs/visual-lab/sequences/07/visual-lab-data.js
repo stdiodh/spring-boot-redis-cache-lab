@@ -14,6 +14,70 @@ window.visualLabData = {
     "kind": "cache",
     "title": "Cache State Inspector",
     "instruction": "조회 또는 쓰기 조건을 선택해 Redis와 DB 경계, 그리고 다음 요청의 상태가 어떻게 달라지는지 비교하세요.",
+    "nodes": {
+      "client": {
+        "label": "Client",
+        "icon": "client",
+        "kind": "client",
+        "role": "단건 조회나 수정 요청을 보내고 PostResponse를 받습니다.",
+        "boundary": "클라이언트"
+      },
+      "postController": {
+        "label": "PostController",
+        "icon": "api",
+        "kind": "api",
+        "role": "HTTP 요청을 조회 Service 또는 쓰기 Service로 전달하고 성공한 쓰기 뒤 cache evict를 요청합니다.",
+        "boundary": "HTTP API"
+      },
+      "postQueryService": {
+        "label": "PostQueryService",
+        "icon": "service",
+        "kind": "service",
+        "role": "cache hit와 miss를 나누고 miss이면 DB 원본 조회와 refill을 조립합니다.",
+        "boundary": "조회 정책",
+        "codePointIds": [
+          "cache-aside-query"
+        ]
+      },
+      "postCacheService": {
+        "label": "PostCacheService",
+        "icon": "cache",
+        "kind": "cache",
+        "role": "Redis key, JSON 변환, TTL, get/set/evict 책임을 모읍니다.",
+        "boundary": "캐시 어댑터",
+        "codePointIds": [
+          "redis-ttl"
+        ]
+      },
+      "redis": {
+        "label": "Redis",
+        "icon": "cache",
+        "kind": "cache",
+        "role": "PostResponse의 직렬화된 복사본을 제한된 시간 동안 저장합니다.",
+        "boundary": "파생 데이터 저장소"
+      },
+      "postService": {
+        "label": "PostService",
+        "icon": "service",
+        "kind": "service",
+        "role": "DB 원본 게시글을 조회하고 수정하는 비즈니스 흐름을 담당합니다.",
+        "boundary": "원본 데이터 정책"
+      },
+      "postRepository": {
+        "label": "PostRepository",
+        "icon": "repository",
+        "kind": "repository",
+        "role": "PostEntity를 MySQL의 원본 데이터와 연결합니다.",
+        "boundary": "영속성"
+      },
+      "mysql": {
+        "label": "MySQL",
+        "icon": "database",
+        "kind": "database",
+        "role": "게시글의 source of truth를 저장합니다.",
+        "boundary": "원본 저장소"
+      }
+    },
     "scenarios": [
       {
         "id": "cold-cache-miss",
@@ -21,6 +85,153 @@ window.visualLabData = {
         "flowId": "lookup-flow",
         "tone": "signal",
         "prompt": "Redis에 해당 게시글 key가 없을 때 단건 조회가 어디까지 내려가는지 확인합니다.",
+        "diagram": {
+          "caption": "cache miss 구현 경로입니다. PostQueryServiceTest는 DB 조회 Service와 cache set 호출을 단위 수준에서 확인하며, 실제 Redis 명령과 로그는 수동 실행 증거입니다.",
+          "lanes": [
+            {
+              "id": "cache-lookup",
+              "label": "Cache lookup",
+              "description": "단건 조회는 DB보다 먼저 해당 게시글 key의 캐시 복사본을 확인합니다.",
+              "steps": [
+                {
+                  "from": "client",
+                  "to": "postController",
+                  "verb": "단건 조회",
+                  "payload": "GET /posts/{id}",
+                  "kind": "request"
+                },
+                {
+                  "from": "postController",
+                  "to": "postQueryService",
+                  "verb": "조회 정책 실행",
+                  "payload": "getPost(id)",
+                  "kind": "call",
+                  "codePointIds": [
+                    "cache-aside-query"
+                  ]
+                },
+                {
+                  "from": "postQueryService",
+                  "to": "postCacheService",
+                  "verb": "캐시 조회",
+                  "payload": "get(id) · key post:{id}",
+                  "kind": "call",
+                  "concept": "Cache-aside"
+                },
+                {
+                  "from": "postCacheService",
+                  "to": "redis",
+                  "verb": "key 조회",
+                  "payload": "GET post:{id}",
+                  "kind": "call"
+                }
+              ]
+            },
+            {
+              "id": "db-fallback",
+              "label": "MISS → DB fallback",
+              "description": "key가 없으면 miss를 오류가 아닌 원본 조회 분기로 해석합니다.",
+              "steps": [
+                {
+                  "from": "redis",
+                  "to": "postCacheService",
+                  "verb": "MISS",
+                  "payload": "null",
+                  "kind": "response",
+                  "concept": "Cache miss"
+                },
+                {
+                  "from": "postCacheService",
+                  "to": "postQueryService",
+                  "verb": "캐시 없음 반환",
+                  "payload": "null",
+                  "kind": "response"
+                },
+                {
+                  "from": "postQueryService",
+                  "to": "postService",
+                  "verb": "원본 조회",
+                  "payload": "getById(id)",
+                  "kind": "call"
+                },
+                {
+                  "from": "postService",
+                  "to": "postRepository",
+                  "verb": "Entity 조회",
+                  "payload": "findById(id)",
+                  "kind": "call"
+                },
+                {
+                  "from": "postRepository",
+                  "to": "mysql",
+                  "verb": "원본 SELECT",
+                  "payload": "post id",
+                  "kind": "call"
+                },
+                {
+                  "from": "mysql",
+                  "to": "postRepository",
+                  "verb": "원본 row 반환",
+                  "payload": "post data",
+                  "kind": "response"
+                },
+                {
+                  "from": "postRepository",
+                  "to": "postService",
+                  "verb": "Entity 반환",
+                  "payload": "PostEntity",
+                  "kind": "response"
+                }
+              ]
+            },
+            {
+              "id": "cache-refill",
+              "label": "Response + refill",
+              "description": "DB 원본 응답을 반환하면서 다음 동일 조회를 위해 TTL이 있는 캐시 복사본을 만듭니다.",
+              "steps": [
+                {
+                  "from": "postService",
+                  "to": "postQueryService",
+                  "verb": "원본 응답 반환",
+                  "payload": "PostResponse",
+                  "kind": "response"
+                },
+                {
+                  "from": "postQueryService",
+                  "to": "postCacheService",
+                  "verb": "캐시 채우기",
+                  "payload": "set(id, PostResponse)",
+                  "kind": "call",
+                  "codePointIds": [
+                    "redis-ttl"
+                  ]
+                },
+                {
+                  "from": "postCacheService",
+                  "to": "redis",
+                  "verb": "복사본 저장",
+                  "payload": "SET post:{id} · JSON + TTL",
+                  "kind": "persist",
+                  "concept": "TTL"
+                },
+                {
+                  "from": "postQueryService",
+                  "to": "postController",
+                  "verb": "조회 결과 반환",
+                  "payload": "PostResponse",
+                  "kind": "response"
+                },
+                {
+                  "from": "postController",
+                  "to": "client",
+                  "verb": "단건 응답",
+                  "payload": "200 + PostResponse JSON",
+                  "kind": "response"
+                }
+              ]
+            }
+          ]
+        },
         "route": [
           "Client",
           "PostController",
@@ -63,6 +274,92 @@ window.visualLabData = {
         "flowId": "lookup-flow",
         "tone": "recovered",
         "prompt": "같은 게시글이 Redis에 남아 있을 때 DB를 건너뛰는 경계를 확인합니다.",
+        "diagram": {
+          "caption": "cache hit 단위 테스트는 PostService.getById가 호출되지 않음을 verify합니다. 실제 Redis hit와 직렬화 왕복은 실행 로그와 key 확인이 필요한 별도 증거입니다.",
+          "lanes": [
+            {
+              "id": "warm-lookup",
+              "label": "Warm cache lookup",
+              "description": "같은 key의 캐시 복사본을 먼저 조회합니다.",
+              "steps": [
+                {
+                  "from": "client",
+                  "to": "postController",
+                  "verb": "반복 단건 조회",
+                  "payload": "GET /posts/{id}",
+                  "kind": "request"
+                },
+                {
+                  "from": "postController",
+                  "to": "postQueryService",
+                  "verb": "조회 정책 실행",
+                  "payload": "getPost(id)",
+                  "kind": "call"
+                },
+                {
+                  "from": "postQueryService",
+                  "to": "postCacheService",
+                  "verb": "캐시 조회",
+                  "payload": "get(id) · key post:{id}",
+                  "kind": "call",
+                  "codePointIds": [
+                    "cache-aside-query"
+                  ]
+                },
+                {
+                  "from": "postCacheService",
+                  "to": "redis",
+                  "verb": "key 조회",
+                  "payload": "GET post:{id}",
+                  "kind": "call"
+                }
+              ]
+            },
+            {
+              "id": "hit-response",
+              "label": "HIT → immediate response",
+              "description": "Redis 복사본을 PostResponse로 읽어 DB 원본 경계를 건너뛰고 반환합니다.",
+              "steps": [
+                {
+                  "from": "redis",
+                  "to": "postCacheService",
+                  "verb": "HIT",
+                  "payload": "cached JSON",
+                  "kind": "response",
+                  "concept": "Cache hit"
+                },
+                {
+                  "from": "postCacheService",
+                  "to": "postQueryService",
+                  "verb": "캐시 값 역직렬화",
+                  "payload": "Cached PostResponse",
+                  "kind": "transform"
+                },
+                {
+                  "from": "postQueryService",
+                  "to": "postController",
+                  "verb": "캐시 응답 반환",
+                  "payload": "PostResponse",
+                  "kind": "response"
+                },
+                {
+                  "from": "postController",
+                  "to": "client",
+                  "verb": "단건 응답",
+                  "payload": "200 + PostResponse JSON",
+                  "kind": "response",
+                  "check": "단위 테스트는 PostService가 호출되지 않음을 확인합니다."
+                }
+              ]
+            }
+          ],
+          "notReached": [
+            {
+              "label": "PostService · PostRepository · MySQL",
+              "reason": "cache hit이면 원본 조회 경계를 호출하지 않습니다."
+            }
+          ]
+        },
         "route": [
           "Client",
           "PostController",
@@ -99,6 +396,150 @@ window.visualLabData = {
         "flowId": "lookup-flow",
         "tone": "warning",
         "prompt": "TTL이 지난 key가 다시 조회될 때 miss를 오류가 아닌 정상 refill 흐름으로 해석합니다.",
+        "diagram": {
+          "caption": "TTL 만료는 Redis에서 key가 없는 것처럼 관찰되어 miss와 같은 DB fallback으로 이어집니다. 현재 테스트는 실제 시간 경과와 만료 왕복을 자동 검증하지 않습니다.",
+          "lanes": [
+            {
+              "id": "expired-lookup",
+              "label": "Expired key lookup",
+              "description": "PostCacheService가 같은 key를 조회하지만 TTL이 지난 값은 반환되지 않습니다.",
+              "steps": [
+                {
+                  "from": "client",
+                  "to": "postController",
+                  "verb": "만료 뒤 단건 조회",
+                  "payload": "GET /posts/{id}",
+                  "kind": "request"
+                },
+                {
+                  "from": "postController",
+                  "to": "postQueryService",
+                  "verb": "조회 정책 실행",
+                  "payload": "getPost(id)",
+                  "kind": "call"
+                },
+                {
+                  "from": "postQueryService",
+                  "to": "postCacheService",
+                  "verb": "캐시 조회",
+                  "payload": "get(id) · key post:{id}",
+                  "kind": "call"
+                },
+                {
+                  "from": "postCacheService",
+                  "to": "redis",
+                  "verb": "만료 key 조회",
+                  "payload": "GET post:{id}",
+                  "kind": "call",
+                  "codePointIds": [
+                    "redis-ttl"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "expired-fallback",
+              "label": "Expired → DB fallback",
+              "description": "만료된 key는 miss로 처리되어 source of truth를 다시 읽습니다.",
+              "steps": [
+                {
+                  "from": "redis",
+                  "to": "postCacheService",
+                  "verb": "만료 결과",
+                  "payload": "MISS · null",
+                  "kind": "response",
+                  "concept": "TTL expiry"
+                },
+                {
+                  "from": "postCacheService",
+                  "to": "postQueryService",
+                  "verb": "캐시 없음 반환",
+                  "payload": "null",
+                  "kind": "response"
+                },
+                {
+                  "from": "postQueryService",
+                  "to": "postService",
+                  "verb": "원본 조회",
+                  "payload": "getById(id)",
+                  "kind": "call"
+                },
+                {
+                  "from": "postService",
+                  "to": "postRepository",
+                  "verb": "Entity 조회",
+                  "payload": "findById(id)",
+                  "kind": "call"
+                },
+                {
+                  "from": "postRepository",
+                  "to": "mysql",
+                  "verb": "원본 SELECT",
+                  "payload": "post id",
+                  "kind": "call"
+                },
+                {
+                  "from": "mysql",
+                  "to": "postRepository",
+                  "verb": "최신 row 반환",
+                  "payload": "post data",
+                  "kind": "response"
+                },
+                {
+                  "from": "postRepository",
+                  "to": "postService",
+                  "verb": "Entity 반환",
+                  "payload": "PostEntity",
+                  "kind": "response"
+                }
+              ]
+            },
+            {
+              "id": "ttl-refill",
+              "label": "TTL restart",
+              "description": "최신 DB 응답을 같은 key에 새 TTL과 함께 저장하고 클라이언트에 반환합니다.",
+              "steps": [
+                {
+                  "from": "postService",
+                  "to": "postQueryService",
+                  "verb": "최신 응답 반환",
+                  "payload": "PostResponse",
+                  "kind": "response"
+                },
+                {
+                  "from": "postQueryService",
+                  "to": "postCacheService",
+                  "verb": "캐시 다시 채우기",
+                  "payload": "set(id, PostResponse)",
+                  "kind": "call"
+                },
+                {
+                  "from": "postCacheService",
+                  "to": "redis",
+                  "verb": "TTL 재설정",
+                  "payload": "SET post:{id} · JSON + new TTL",
+                  "kind": "persist",
+                  "concept": "TTL"
+                },
+                {
+                  "from": "postQueryService",
+                  "to": "postController",
+                  "verb": "조회 결과 반환",
+                  "payload": "PostResponse",
+                  "kind": "response"
+                },
+                {
+                  "from": "postController",
+                  "to": "client",
+                  "verb": "단건 응답",
+                  "payload": "200 + PostResponse JSON",
+                  "kind": "response",
+                  "check": "실제 만료는 Redis TTL과 시간 경과를 수동 확인해야 합니다."
+                }
+              ]
+            }
+          ]
+        },
         "route": [
           "Client",
           "PostController",
@@ -139,6 +580,219 @@ window.visualLabData = {
         "flowId": "stale-data",
         "tone": "recovered",
         "prompt": "게시글 수정이 성공한 뒤 캐시를 제거하고 다음 조회가 최신 원본으로 돌아가는 순서를 확인합니다.",
+        "diagram": {
+          "caption": "Request A의 성공한 수정 경로 뒤 cache key를 제거하고 Request B의 다음 GET이 최신 원본을 다시 채우는 개념 흐름입니다. 현재 invalidation 단위 테스트는 evict 호출을 확인하지만 실제 DB write와 호출 순서를 직접 증명하지 않습니다.",
+          "lanes": [
+            {
+              "id": "write-request",
+              "label": "Request A · DB write",
+              "description": "수정 요청은 Redis가 아니라 source of truth인 MySQL의 게시글을 먼저 변경합니다.",
+              "steps": [
+                {
+                  "from": "client",
+                  "to": "postController",
+                  "verb": "게시글 수정",
+                  "payload": "PUT /posts/{id} + PostUpdateRequest",
+                  "kind": "request"
+                },
+                {
+                  "from": "postController",
+                  "to": "postService",
+                  "verb": "수정 정책 실행",
+                  "payload": "update(id, request, currentUserEmail)",
+                  "kind": "call"
+                },
+                {
+                  "from": "postService",
+                  "to": "postRepository",
+                  "verb": "현재 Entity 조회",
+                  "payload": "findById(id)",
+                  "kind": "call"
+                },
+                {
+                  "from": "postRepository",
+                  "to": "mysql",
+                  "verb": "원본 SELECT",
+                  "payload": "post id",
+                  "kind": "call"
+                },
+                {
+                  "from": "mysql",
+                  "to": "postRepository",
+                  "verb": "현재 row 반환",
+                  "payload": "post data",
+                  "kind": "response"
+                }
+              ]
+            },
+            {
+              "id": "write-success-evict",
+              "label": "Write success → evict",
+              "description": "transaction이 성공한 경로에서 Controller가 TTL을 기다리지 않고 해당 key 삭제를 요청합니다.",
+              "steps": [
+                {
+                  "from": "postRepository",
+                  "to": "postService",
+                  "verb": "관리 Entity 반환",
+                  "payload": "PostEntity",
+                  "kind": "response"
+                },
+                {
+                  "from": "postService",
+                  "to": "postRepository",
+                  "verb": "수정 상태 영속화",
+                  "payload": "updated managed PostEntity",
+                  "kind": "persist"
+                },
+                {
+                  "from": "postRepository",
+                  "to": "mysql",
+                  "verb": "transaction commit",
+                  "payload": "UPDATE post",
+                  "kind": "persist"
+                },
+                {
+                  "from": "mysql",
+                  "to": "postRepository",
+                  "verb": "쓰기 성공",
+                  "payload": "commit success",
+                  "kind": "response"
+                },
+                {
+                  "from": "postService",
+                  "to": "postController",
+                  "verb": "수정 결과 반환",
+                  "payload": "PostResponse",
+                  "kind": "response"
+                },
+                {
+                  "from": "postController",
+                  "to": "postCacheService",
+                  "verb": "캐시 제거 요청",
+                  "payload": "evict(id)",
+                  "kind": "call",
+                  "concept": "Cache invalidation",
+                  "codePointIds": [
+                    "redis-ttl"
+                  ]
+                },
+                {
+                  "from": "postCacheService",
+                  "to": "redis",
+                  "verb": "key 삭제",
+                  "payload": "DEL post:{id}",
+                  "kind": "persist",
+                  "check": "단위 테스트는 성공 경로의 evict 호출만 확인하며 DB와 실행 순서를 직접 검증하지 않습니다."
+                }
+              ]
+            },
+            {
+              "id": "next-get-miss",
+              "label": "Request B · next GET",
+              "description": "수정 응답 뒤 별도의 다음 GET이 삭제된 key를 조회해 miss가 됩니다.",
+              "steps": [
+                {
+                  "from": "postController",
+                  "to": "client",
+                  "verb": "수정 응답",
+                  "payload": "200 + updated PostResponse",
+                  "kind": "response"
+                },
+                {
+                  "from": "client",
+                  "to": "postController",
+                  "verb": "다음 단건 조회",
+                  "payload": "GET /posts/{id}",
+                  "kind": "request"
+                },
+                {
+                  "from": "postController",
+                  "to": "postQueryService",
+                  "verb": "조회 정책 실행",
+                  "payload": "getPost(id)",
+                  "kind": "call"
+                },
+                {
+                  "from": "postQueryService",
+                  "to": "postCacheService",
+                  "verb": "삭제된 key 조회",
+                  "payload": "get(id)",
+                  "kind": "call"
+                },
+                {
+                  "from": "postCacheService",
+                  "to": "redis",
+                  "verb": "key 조회",
+                  "payload": "GET post:{id}",
+                  "kind": "call"
+                },
+                {
+                  "from": "redis",
+                  "to": "postCacheService",
+                  "verb": "MISS",
+                  "payload": "null",
+                  "kind": "response"
+                },
+                {
+                  "from": "postCacheService",
+                  "to": "postQueryService",
+                  "verb": "캐시 없음 반환",
+                  "payload": "null",
+                  "kind": "response"
+                }
+              ]
+            },
+            {
+              "id": "latest-refill",
+              "label": "Latest value refill",
+              "description": "DB의 최신 값을 읽어 삭제된 cache copy를 새 TTL로 다시 만듭니다.",
+              "steps": [
+                {
+                  "from": "postQueryService",
+                  "to": "postService",
+                  "verb": "최신 원본 조회",
+                  "payload": "getById(id)",
+                  "kind": "call"
+                },
+                {
+                  "from": "postService",
+                  "to": "postQueryService",
+                  "verb": "최신 응답 반환",
+                  "payload": "latest PostResponse",
+                  "kind": "response"
+                },
+                {
+                  "from": "postQueryService",
+                  "to": "postCacheService",
+                  "verb": "최신 복사본 저장 요청",
+                  "payload": "set(id, latest PostResponse)",
+                  "kind": "call"
+                },
+                {
+                  "from": "postCacheService",
+                  "to": "redis",
+                  "verb": "캐시 다시 채우기",
+                  "payload": "SET post:{id} · JSON + TTL",
+                  "kind": "persist"
+                },
+                {
+                  "from": "postQueryService",
+                  "to": "postController",
+                  "verb": "최신 조회 결과",
+                  "payload": "PostResponse",
+                  "kind": "response"
+                },
+                {
+                  "from": "postController",
+                  "to": "client",
+                  "verb": "단건 응답",
+                  "payload": "200 + latest PostResponse JSON",
+                  "kind": "response"
+                }
+              ]
+            }
+          ]
+        },
         "route": [
           "Client",
           "PUT /posts/{id}",
