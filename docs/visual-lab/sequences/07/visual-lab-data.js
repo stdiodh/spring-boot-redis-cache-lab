@@ -10,6 +10,176 @@ window.visualLabData = {
     "path": "spring-boot-redis-cache-lab"
   },
   "defaultSequence": "07",
+  "workbench": {
+    "kind": "cache",
+    "title": "Cache State Inspector",
+    "instruction": "조회 또는 쓰기 조건을 선택해 Redis와 DB 경계, 그리고 다음 요청의 상태가 어떻게 달라지는지 비교하세요.",
+    "scenarios": [
+      {
+        "id": "cold-cache-miss",
+        "label": "첫 조회 · cache miss",
+        "flowId": "lookup-flow",
+        "tone": "signal",
+        "prompt": "Redis에 해당 게시글 key가 없을 때 단건 조회가 어디까지 내려가는지 확인합니다.",
+        "route": [
+          "Client",
+          "PostController",
+          "PostQueryService",
+          "PostCacheService",
+          "Redis miss",
+          "PostQueryService",
+          "PostService",
+          "PostRepository",
+          "DB",
+          "PostQueryService",
+          "PostCacheService",
+          "Redis write",
+          "PostController",
+          "Client"
+        ],
+        "snapshot": [
+          {
+            "label": "Cache lookup",
+            "value": "miss",
+            "tone": "warning"
+          },
+          {
+            "label": "DB lookup",
+            "value": "findById(id)",
+            "tone": "signal"
+          },
+          {
+            "label": "Cache write",
+            "value": "PostResponse + TTL",
+            "tone": "recovered"
+          }
+        ],
+        "evidence": "cache miss 로그 뒤 Repository 조회와 Redis 저장이 이어지는지 확인합니다.",
+        "outcome": "DB 원본을 응답하고 같은 key의 다음 조회가 cache hit가 될 수 있도록 준비합니다."
+      },
+      {
+        "id": "warm-cache-hit",
+        "label": "반복 조회 · cache hit",
+        "flowId": "lookup-flow",
+        "tone": "recovered",
+        "prompt": "같은 게시글이 Redis에 남아 있을 때 DB를 건너뛰는 경계를 확인합니다.",
+        "route": [
+          "Client",
+          "PostController",
+          "PostQueryService",
+          "PostCacheService",
+          "Redis hit",
+          "PostQueryService",
+          "PostController",
+          "Client"
+        ],
+        "snapshot": [
+          {
+            "label": "Cache lookup",
+            "value": "hit",
+            "tone": "recovered"
+          },
+          {
+            "label": "Returned value",
+            "value": "Cached PostResponse",
+            "tone": "signal"
+          },
+          {
+            "label": "DB lookup",
+            "value": "호출하지 않음",
+            "tone": "recovered"
+          }
+        ],
+        "evidence": "cache hit 로그와 함께 Repository 조회가 생략되는지 테스트 또는 호출 횟수로 확인합니다.",
+        "outcome": "Redis의 응답을 바로 반환해 같은 단건 조회의 DB 비용을 줄입니다."
+      },
+      {
+        "id": "ttl-expired-refill",
+        "label": "TTL 만료 · 다시 채우기",
+        "flowId": "lookup-flow",
+        "tone": "warning",
+        "prompt": "TTL이 지난 key가 다시 조회될 때 miss를 오류가 아닌 정상 refill 흐름으로 해석합니다.",
+        "route": [
+          "Client",
+          "PostController",
+          "PostQueryService",
+          "PostCacheService",
+          "Expired Redis key",
+          "PostQueryService",
+          "PostService",
+          "PostRepository",
+          "DB",
+          "PostCacheService",
+          "Redis write with TTL",
+          "Client"
+        ],
+        "snapshot": [
+          {
+            "label": "TTL state",
+            "value": "만료",
+            "tone": "warning"
+          },
+          {
+            "label": "Cache lookup",
+            "value": "miss",
+            "tone": "signal"
+          },
+          {
+            "label": "Refill",
+            "value": "DB 조회 후 TTL 재설정",
+            "tone": "recovered"
+          }
+        ],
+        "evidence": "key 만료 뒤 같은 GET에서 DB fallback과 Redis 재저장이 이어지는지 확인합니다.",
+        "outcome": "만료된 값 대신 DB 원본으로 응답하고 캐시의 유효 기간을 다시 시작합니다."
+      },
+      {
+        "id": "write-then-evict",
+        "label": "수정 성공 · 즉시 evict",
+        "flowId": "stale-data",
+        "tone": "recovered",
+        "prompt": "게시글 수정이 성공한 뒤 캐시를 제거하고 다음 조회가 최신 원본으로 돌아가는 순서를 확인합니다.",
+        "route": [
+          "Client",
+          "PUT /posts/{id}",
+          "PostController",
+          "PostService",
+          "PostRepository",
+          "DB write success",
+          "PostController",
+          "PostCacheService",
+          "Redis evict",
+          "Next GET",
+          "PostQueryService",
+          "Redis miss",
+          "DB latest value",
+          "PostQueryService",
+          "PostCacheService",
+          "Redis write",
+          "Client"
+        ],
+        "snapshot": [
+          {
+            "label": "DB write",
+            "value": "성공",
+            "tone": "recovered"
+          },
+          {
+            "label": "Cache key",
+            "value": "evicted",
+            "tone": "signal"
+          },
+          {
+            "label": "Next GET",
+            "value": "miss → 최신 DB 값",
+            "tone": "recovered"
+          }
+        ],
+        "evidence": "PostControllerCacheInvalidationTest에서 DB 쓰기 뒤 해당 key가 제거되는 호출 순서를 확인합니다.",
+        "outcome": "TTL을 기다리지 않고 오래된 응답 가능성을 줄인 뒤 다음 조회에서 최신 값을 다시 채웁니다."
+      }
+    ]
+  },
   "actors": [
     {
       "id": "client",
