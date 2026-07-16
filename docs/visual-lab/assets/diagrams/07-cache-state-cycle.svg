@@ -1,68 +1,81 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 500" role="img" aria-labelledby="title desc">
-  <title id="title">Redis cache state lifecycle</title>
-  <desc id="desc">An empty Redis entry causes a MySQL source read and Redis refill. A warm Redis entry produces a hit and skips MySQL. TTL expiry or deletion after a successful write returns the entry to the empty state.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 540" role="img" aria-labelledby="title desc">
+  <title id="title">Redis cache 상태 순환</title>
+  <desc id="desc">상태·데이터 레이어에서 Redis entry가 비어 있으면 MySQL 원본을 읽어 Redis 파생본을 채우고, hit이면 MySQL을 건너뛰며, TTL 경과 또는 쓰기 성공 뒤 삭제로 다시 empty 상태가 되는 순환</desc>
   <metadata>Source: docs/theory.md, docs/implementation.md, docs/checklist.md. Original repository-local diagram. License: repository project terms; no external visual assets.</metadata>
   <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-      <path d="M0 0 10 5 0 10Z" fill="#2955E4"/>
-    </marker>
-    <marker id="arrowTeal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-      <path d="M0 0 10 5 0 10Z" fill="#3F8996"/>
-    </marker>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 10 5 0 10Z" fill="#2955E4"/></marker>
+    <marker id="return-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 10 5 0 10Z" fill="#176F72"/></marker>
     <style>
-      text { font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; fill: #111B3F; }
-      .title { font-size: 30px; font-weight: 800; fill: #0C2691; }
-      .sub { font-size: 22px; font-weight: 600; fill: #4B587C; }
-      .label { font-size: 25px; font-weight: 800; fill: #0C2691; }
-      .body { font-size: 23px; font-weight: 600; }
-      .utility { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 22px; font-weight: 800; }
-      .state { fill: #FFFFFF; stroke: #6276A8; stroke-width: 3; }
-      .source { fill: #EEF4FF; stroke: #2955E4; stroke-width: 3; }
-      .derived { fill: #ECFBFA; stroke: #3F8996; stroke-width: 3; }
-      .branch { fill: #FFFFFF; stroke: #6276A8; stroke-width: 3; }
-      .line { fill: none; stroke: #2955E4; stroke-width: 4; marker-end: url(#arrow); }
-      .return { fill: none; stroke: #3F8996; stroke-width: 4; marker-end: url(#arrowTeal); }
-      .dash { fill: none; stroke: #6276A8; stroke-width: 3; stroke-dasharray: 10 8; marker-end: url(#arrow); }
+      text{font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;fill:#111B3F}
+      .node{stroke-width:3}
+      .layer-outside{fill:#F1F5F9;stroke:#5B677A}
+      .layer-interface{fill:#E6F4F7;stroke:#0E7490}
+      .layer-application{fill:#F2EDFF;stroke:#6D43A8}
+      .layer-resource{fill:#EAF5EE;stroke:#2C7352}
+      .layer-integration{fill:#FFF4D6;stroke:#926000}
+      .layer-runtime{fill:#EEF2F7;stroke:#52627A}
+      [data-layer="outside"] .layer{fill:#5B677A}
+      [data-layer="resource"] .layer{fill:#2C7352}
+      .state-panel{fill:#FFFFFF;stroke:#64748B;stroke-width:2.5}
+      .state-panel line{stroke:#C9D6F3;stroke-width:2}
+      .flow{fill:none;stroke:#2955E4;stroke-width:4;marker-end:url(#arrow)}
+      .return{fill:none;stroke:#176F72;stroke-width:4;marker-end:url(#return-arrow)}
+      .expire{fill:none;stroke:#64748B;stroke-width:3;stroke-dasharray:10 8;marker-end:url(#arrow)}
+      .title{font-size:30px;font-weight:850;fill:#0C2691}
+      .sub{font-size:22px;font-weight:650;fill:#4B587C}
+      .layer{font-size:21px;font-weight:850;fill:#2C7352}
+      .utility{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:21px;font-weight:850}
+      .name{font-size:24px;font-weight:850}
+      .body{font-size:21px;font-weight:650;fill:#4B587C}
+      .state-name{font-size:22px;font-weight:850}
+      .state-body{font-size:21px;font-weight:650;fill:#4B587C}
     </style>
   </defs>
+  <rect width="640" height="540" fill="#F8F9FB"/>
+  <text class="title" x="24" y="40">Redis 캐시 상태 순환</text>
+  <text class="sub" x="24" y="72">같은 레이어 안에서 원본과 파생본의 상태가 바뀐다</text>
 
-  <rect width="640" height="500" fill="#F8F9FB"/>
-  <text class="title" x="28" y="40">Redis Cache State Cycle</text>
-  <text class="sub" x="28" y="74">entry 조건이 다음 조회 경로를 결정한다</text>
+  <g data-layer="resource">
+    <rect class="node layer-resource" x="24" y="102" width="255" height="116" rx="14"/>
+    <text class="layer" x="46" y="130">상태·데이터</text>
+    <text class="utility" x="46" y="160">EMPTY</text>
+    <text class="body" x="46" y="196">entry 없음</text>
+  </g>
+  <path class="flow" d="M279 160H347"/>
+  <text class="utility" x="287" y="142">MISS</text>
+  <g data-layer="resource">
+    <rect class="node layer-resource" x="359" y="102" width="257" height="116" rx="14"/>
+    <text class="layer" x="381" y="130">상태·데이터</text>
+    <text class="utility" x="381" y="160">DB READ</text>
+    <text class="name" x="381" y="195">MySQL 원본 row</text>
+  </g>
 
-  <rect class="state" x="28" y="108" width="250" height="98" rx="14"/>
-  <text class="utility" x="50" y="145">EMPTY</text>
-  <text class="body" x="50" y="179">Redis entry 없음</text>
+  <path class="flow" d="M487 218V244"/>
+  <g data-layer="resource">
+    <rect class="node layer-resource" x="359" y="256" width="257" height="120" rx="14"/>
+    <text class="layer" x="381" y="284">상태·데이터</text>
+    <text class="utility" x="381" y="314">REDIS FILL</text>
+    <text class="name" x="381" y="346">entry + TTL 저장</text>
+    <text class="body" x="381" y="370">원본에서 만든 복사본</text>
+  </g>
+  <path class="return" d="M359 316H291"/>
+  <text class="utility" x="299" y="298">HIT</text>
+  <g data-layer="resource">
+    <rect class="node layer-resource" x="24" y="256" width="255" height="120" rx="14"/>
+    <text class="layer" x="46" y="284">상태·데이터</text>
+    <text class="utility" x="46" y="314">CACHE HIT</text>
+    <text class="name" x="46" y="346">Redis 응답</text>
+    <text class="body" x="46" y="370">MySQL 조회 생략</text>
+  </g>
 
-  <path class="line" d="M278 157H350"/>
-  <text class="utility" x="286" y="139">MISS</text>
-
-  <rect class="source" x="362" y="108" width="250" height="98" rx="14"/>
-  <text class="utility" x="384" y="145">DB READ</text>
-  <text class="label" x="384" y="179">MySQL 원본 읽기</text>
-
-  <path class="line" d="M487 206V232"/>
-
-  <rect class="derived" x="362" y="244" width="250" height="106" rx="14"/>
-  <text class="utility" x="384" y="281">REDIS FILL</text>
-  <text class="label" x="384" y="315">entry + TTL 저장</text>
-  <text class="body" x="384" y="340">파생 복사본</text>
-
-  <path class="return" d="M362 297H290"/>
-  <text class="utility" x="298" y="279">HIT</text>
-
-  <rect class="derived" x="28" y="244" width="250" height="106" rx="14"/>
-  <text class="utility" x="50" y="281">CACHE HIT</text>
-  <text class="label" x="50" y="315">Redis 응답</text>
-  <text class="body" x="50" y="340">MySQL 건너뜀</text>
-
-  <path class="return" d="M487 350V378"/>
-  <rect class="branch" x="28" y="390" width="584" height="78" rx="14"/>
-  <line x1="320" y1="404" x2="320" y2="454" stroke="#C9D6F3" stroke-width="3"/>
-  <text class="label" x="50" y="422">TTL 경과</text>
-  <text class="body" x="50" y="453">다음 조회가 refill</text>
-  <text class="label" x="342" y="422">쓰기 성공 + DEL</text>
-  <text class="body" x="342" y="453">TTL을 기다리지 않음</text>
-
-  <path class="dash" d="M92 390C20 350 18 236 72 214"/>
+  <path class="return" d="M487 376V401"/>
+  <g data-semantic="state">
+    <rect class="state-panel" x="24" y="413" width="592" height="92" rx="14"/>
+    <line x1="320" y1="426" x2="320" y2="492"/>
+    <text class="state-name" x="48" y="448">TTL 경과</text>
+    <text class="state-body" x="48" y="479">다음 조회가 refill</text>
+    <text class="state-name" x="344" y="448">쓰기 성공 + DEL</text>
+    <text class="state-body" x="344" y="479">TTL을 기다리지 않고 제거</text>
+  </g>
+  <path class="expire" d="M92 413C10 370 12 260 68 226"/>
 </svg>

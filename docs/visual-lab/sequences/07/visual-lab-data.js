@@ -57,6 +57,7 @@ window.visualLabData = {
         "icon": "client",
         "kind": "HTTP client",
         "role": "게시글 단건 조회 또는 수정 요청을 보냅니다.",
+        "systemLayer": "outside",
         "boundary": "Client"
       },
       "postController": {
@@ -64,6 +65,7 @@ window.visualLabData = {
         "icon": "api",
         "kind": "request handler",
         "role": "HTTP 요청을 조회·쓰기 책임으로 전달합니다.",
+        "systemLayer": "interface",
         "boundary": "Web",
         "codePointIds": ["controller-write-boundary"]
       },
@@ -72,6 +74,7 @@ window.visualLabData = {
         "icon": "service",
         "kind": "cache-aside policy",
         "role": "캐시를 먼저 확인하고 값이 없을 때만 원본 조회를 선택합니다.",
+        "systemLayer": "application",
         "boundary": "Application"
       },
       "postCacheService": {
@@ -79,6 +82,7 @@ window.visualLabData = {
         "icon": "cache",
         "kind": "cache adapter",
         "role": "post:{id} key, JSON 변환, TTL, get·set·evict 책임을 가집니다.",
+        "systemLayer": "resource",
         "boundary": "Cache"
       },
       "redis": {
@@ -86,6 +90,7 @@ window.visualLabData = {
         "icon": "cache",
         "kind": "derived store",
         "role": "PostResponse의 직렬화 복사본을 TTL 동안 저장합니다.",
+        "systemLayer": "resource",
         "boundary": "Derived data"
       },
       "postService": {
@@ -93,6 +98,7 @@ window.visualLabData = {
         "icon": "service",
         "kind": "source service",
         "role": "Repository를 통해 DB 원본 게시글을 읽고 수정합니다.",
+        "systemLayer": "application",
         "boundary": "Domain",
         "codePointIds": ["source-read-boundary"]
       },
@@ -101,6 +107,7 @@ window.visualLabData = {
         "icon": "database",
         "kind": "persistent store",
         "role": "게시글의 원본 row를 보관합니다.",
+        "systemLayer": "resource",
         "boundary": "Source of truth"
       }
     },
